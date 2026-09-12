@@ -18,19 +18,49 @@ sources:
 ## 概要
 
 5サービス構成(frontend / backend-api / search-agent / judge-agent / recommend-agent)を
-共有プロジェクト`project-3bcd6d36-2338-4b32-848`へ実際にデプロイした結果[^service-topology]。
-Places API実データ + Gemini判定によるエンドツーエンド動作を確認済み。
+共有プロジェクト`project-3bcd6d36-2338-4b32-848`へ実際にデプロイし、
+Places API実データ + Gemini判定によるエンドツーエンド動作を確認した[^service-topology]。
 
-## 決定/結論
+**2026-09-12: 継続コストを避けるため、確認後にデプロイ済みリソースを全て削除済み**
+(下記「現在の状態」参照)。コードとTerraform定義はリポジトリに残っているため、
+`docs/superpowers/plans/2026-09-12-integration-infra-walking-skeleton.md` の
+Task 0〜3を再実行すれば同じ構成を再デプロイできる。
 
-- frontend: https://frontend-52nrnvxjyq-an.a.run.app
-- backend-api: https://backend-api-52nrnvxjyq-an.a.run.app
-- search-agent: https://search-agent-52nrnvxjyq-an.a.run.app (非公開、backend-apiのみ呼び出し可能)
-- judge-agent: https://judge-agent-52nrnvxjyq-an.a.run.app (非公開、backend-apiのみ呼び出し可能)
-- recommend-agent: https://recommend-agent-52nrnvxjyq-an.a.run.app (非公開、backend-apiのみ呼び出し可能)
+## 決定/結論(デプロイ確認時点。現在は削除済み)
+
+- frontend: ~~https://frontend-52nrnvxjyq-an.a.run.app~~
+- backend-api: ~~https://backend-api-52nrnvxjyq-an.a.run.app~~
+- search-agent: ~~https://search-agent-52nrnvxjyq-an.a.run.app~~ (非公開、backend-apiのみ呼び出し可能)
+- judge-agent: ~~https://judge-agent-52nrnvxjyq-an.a.run.app~~ (非公開、backend-apiのみ呼び出し可能)
+- recommend-agent: ~~https://recommend-agent-52nrnvxjyq-an.a.run.app~~ (非公開、backend-apiのみ呼び出し可能)
+
+再デプロイ時、Cloud RunのURLは(同名サービスとして再作成すれば)通常同じ形式になるが、
+保証はされない。確定した最新URLは再デプロイ後に本ページを更新すること。
 
 `curl -X POST <backend_api_url>/v1/recommendations -d '{"area":"福岡市中央区","wheelchair_width_cm":63}'`
-で福岡市中央区の実店舗5件(Places API実データ + Gemini判定)を確認済み。
+で福岡市中央区の実店舗5件(Places API実データ + Gemini判定)を確認済み(確認時点のログ)。
+
+## 現在の状態(2026-09-12 削除済み)
+
+以下を全て削除し、共有プロジェクトに継続コストが発生するリソースは残っていない:
+
+- Cloud Run 5サービス(frontend, backend-api, search-agent, judge-agent, recommend-agent)
+- 関連サービスアカウント5つ、IAMバインディング一式
+- Artifact Registryリポジトリ`cloud-run-source-deploy`(ビルド済みイメージ含む)
+- Secret Manager `places-api-key`
+- API キー2つ(`search-agent-places-key`, `frontend-maps-browser-key`)
+
+**残したもの**(コスト実質ゼロ、再デプロイに必要):
+- Terraform state用GCSバケット`project-3bcd6d36-2338-4b32-848-tfstate`(182バイト)
+- 有効化されたGCP API群(有効化自体は無課金)
+- コード・Terraform定義一式(このリポジトリ)
+
+## 再デプロイ手順
+
+1. `docs/superpowers/plans/2026-09-12-integration-infra-walking-skeleton.md` の Task 0を実行
+   (Places APIキーの再作成、Secret Managerへの再登録が必要 — キー自体は削除済みのため)
+2. Task 1〜3を順に実行(Dockerビルド → Terraform apply → E2E確認)
+3. 本ページのURLを新しい値で更新
 
 ## 根拠
 

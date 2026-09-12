@@ -37,3 +37,7 @@
     `aiplatform.googleapis.com`未有効化、frontendのメモリ制限不足
   - judge-agent/recommend-agentにハードコードされていた個人GCPプロジェクトIDは別PRで修正済み(#14)
   - `PLACES_API_KEY`(Secret Manager)、Google Maps用ブラウザキーを新規作成して配線
+- 継続コストを避けるため、デプロイ確認後にCloud Run 5サービス、Artifact Registryリポジトリ、
+  Secret Manager `places-api-key`、APIキー2つを全て削除(`terraform destroy` + `gcloud`)。
+  Terraform state用GCSバケットとコード・Terraform定義は再デプロイのため残す。
+  詳細は`concepts/deployed-endpoints.md`
