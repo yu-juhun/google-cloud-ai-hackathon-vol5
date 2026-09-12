@@ -41,7 +41,20 @@ resource "google_cloud_run_v2_service" "agent" {
   for_each = local.agents
   name     = each.key
   location = var.region
-  ingress  = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  # INGRESS_TRAFFIC_INTERNAL_ONLY requires callers to reach this service via
+  # VPC networking (Direct VPC egress / Serverless VPC Access), which
+  # backend-api does not use — with plain Cloud-Run-to-Cloud-Run calls that
+  # setting made Google Front End reject the request before it ever reached
+  # this container (fast failure, no request logged here at all). Privacy is
+  # enforced by the IAM invoker binding below instead (default ingress + no
+  # public invoker = effectively private to authorized callers). Must be set
+  # explicitly to ALL — omitting the attribute does NOT reset a previously
+  # applied "internal" value on the live resource (confirmed: Terraform
+  # apply succeeded while the live annotation stayed run.googleapis.com/
+  # ingress=internal, causing GFE to 404 every request before it reached
+  # the container).
+  ingress             = "INGRESS_TRAFFIC_ALL"
+  deletion_protection = false
 
   template {
     service_account = google_service_account.agent_sa[each.key].email
@@ -113,8 +126,9 @@ resource "google_cloud_run_v2_service_iam_member" "agent_invoker" {
 }
 
 resource "google_cloud_run_v2_service" "backend_api" {
-  name     = "backend-api"
-  location = var.region
+  name                = "backend-api"
+  location            = var.region
+  deletion_protection = false
 
   template {
     service_account = google_service_account.backend_api_sa.email
@@ -151,8 +165,9 @@ resource "google_cloud_run_v2_service_iam_member" "backend_api_public" {
 }
 
 resource "google_cloud_run_v2_service" "frontend" {
-  name     = "frontend"
-  location = var.region
+  name                = "frontend"
+  location            = var.region
+  deletion_protection = false
 
   template {
     service_account = google_service_account.frontend_sa.email
@@ -161,7 +176,7 @@ resource "google_cloud_run_v2_service" "frontend" {
       resources {
         limits = {
           cpu    = "1"
-          memory = "256Mi"
+          memory = "512Mi"
         }
       }
     }
