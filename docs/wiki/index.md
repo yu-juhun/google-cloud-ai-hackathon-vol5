@@ -16,4 +16,5 @@ okf_version: 0.2
 
 - [agents-cli-adoption](./concepts/agents-cli-adoption.md) — ADK開発ツール `google/agents-cli` の採用と各自のセットアップ手順
 - [recommendation-api-contract](./concepts/recommendation-api-contract.md) — フロントエンド連携用の推薦API契約
-- [service-topology](./concepts/service-topology.md) — frontend / backend-api / agent の3台体制
+- [service-topology](./concepts/service-topology.md) — frontend / backend-api / 3 agent の5台体制
+- [frontend-mock-strategy](./concepts/frontend-mock-strategy.md) — モック先行開発と実APIへの差し替え方針

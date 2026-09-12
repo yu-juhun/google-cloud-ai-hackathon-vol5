@@ -25,3 +25,6 @@
   `docs/superpowers/specs/2026-09-12-integration-infra-design.md`も合わせて修正:
   - 検索/判定/推薦をそれぞれ独立したCloud Runサービスに分離(個人GCPプロジェクトでの検証しやすさが理由)
   - オーケストレーションはbackend-apiが担う(専用orchestratorサービスは追加しない)
+- フロントエンドはモック先行で開発し、環境変数で実APIへ切り替える方針を採用:
+  - React + TypeScript + Viteで、条件入力・判定根拠・○△×・簡易地図を実装
+  - モックとHTTPクライアントで `api/openapi.yaml` と同じ入出力型を共有
