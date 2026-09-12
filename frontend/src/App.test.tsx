@@ -35,6 +35,7 @@ describe('App', () => {
     )
 
     expect((await screen.findAllByText('リタの農園')).length).toBeGreaterThan(0)
+    expect(screen.getByRole('heading', { level: 1, name: 'wishlan' })).toBeInTheDocument()
     expect(screen.getAllByText('利用しやすい').length).toBeGreaterThan(0)
     expect(screen.getAllByText('要確認').length).toBeGreaterThan(0)
     expect(screen.getAllByText('利用が難しい').length).toBeGreaterThan(0)

@@ -45,6 +45,7 @@ Web UIは検証用backend-apiを既定で利用し、オフライン開発やUI�
 
 ## 決定/結論
 
+- 利用者向けのアプリ名は`wishlan`とする
 - `frontend/` は React、TypeScript、Vite で構築する
 - `api/openapi.yaml` と同じ入出力型をモックとHTTPクライアントで共有する
 - `VITE_API_MODE=mock|http` で通信先を切り替え、画面コンポーネントから通信方式を分離する
@@ -92,3 +93,4 @@ Web UIは検証用backend-apiを既定で利用し、オフライン開発やUI�
   帰属表示、Street View埋め込みを追加
 - 2026-09-12: 検証用backend-apiへの接続を既定化。CORS・実レスポンスを確認し、判定根拠の値差異を
   HTTPクライアント境界で互換変換
+- 2026-09-12: 利用者向けアプリ名を`wishlan`へ変更
