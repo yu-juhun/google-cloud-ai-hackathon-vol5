@@ -2,12 +2,8 @@ name: OKF lint
 
 on:
   pull_request:
-    paths:
-      - "docs/wiki/**"
   push:
     branches: [main]
-    paths:
-      - "docs/wiki/**"
 
 jobs:
   lint:
