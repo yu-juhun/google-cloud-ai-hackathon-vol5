@@ -15,3 +15,4 @@ okf_version: 0.2
 ## Decision / Research / Issue(技術的決定・調査結果・未解決の論点)
 
 - [agents-cli-adoption](./concepts/agents-cli-adoption.md) — ADK開発ツール `google/agents-cli` の採用と各自のセットアップ手順
+- [recommendation-api-contract](./concepts/recommendation-api-contract.md) — フロントエンド連携用の推薦API契約
