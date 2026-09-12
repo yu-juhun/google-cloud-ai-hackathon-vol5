@@ -16,3 +16,7 @@
 - フロントエンド連携用に、単一の推薦API契約を `api/openapi.yaml` に定義:
   - `POST /v1/recommendations` でエリア・車椅子の横幅と任意の要望を受け取り、推薦結果を返す
   - 必須項目が不足する場合は、項目別のエラーを含む `400` を返す
+- 統合デモ環境のサービス構成を口頭合意 → `concepts/service-topology.md` に正式記録:
+  - Cloud Run 3台体制(frontend / backend-api / agent)。frontendはbackend-apiのみを呼び、
+    backend-apiがagent(ADK App)を呼び出してレスポンスを整形する
+  - 詳細なインフラ設計は `docs/superpowers/specs/2026-09-12-integration-infra-design.md` に記録
