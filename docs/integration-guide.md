@@ -106,6 +106,27 @@ Places API と Gemini を呼ぶため、通常は **15〜40秒程度**かかり�
 
 ## フロントエンドから呼ぶ
 
+### 開発時の設定
+
+フロントエンドは初期状態ではモックを使います。Cloud Run の実 API を使う場合は、`frontend/.env.local` を作成して次を設定してください。`.env.local` はローカル専用なのでコミットしません。
+
+```dotenv
+VITE_API_MODE=http
+VITE_API_BASE_URL=https://backend-api-378214973378.asia-northeast1.run.app
+```
+
+設定後にフロントの開発サーバーを再起動します。Vite は起動時に環境変数を読み込むため、設定後の再起動が必要です。
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+ブラウザで表示された URL（通常は `http://localhost:5173`）を開き、検索を実行してください。ブラウザからは backend-api だけを呼び、agent の URL や API キーは使いません。
+
+### 呼び出しコード
+
 フォーム送信時に `fetch` を使います。読み込み中はボタンを無効化し、結果が返るまでローディング表示を出してください。
 
 ```ts
