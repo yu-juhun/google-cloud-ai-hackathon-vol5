@@ -23,7 +23,76 @@
 - No manual `gcloud` resource creation for anything beyond one-off verification — production infra goes through Terraform
 - CI/CD: single-job GitHub Actions workflow on `main` push, no staging/prod split
 - Every PR into `main` still must pass `okf-lint` per existing branch protection
-- **Dependency: PR #12 must be merged to `main` before Task 3 (first real deploy) can run** — Task 1 and Task 2 (Dockerfile + Terraform) do not require it and can proceed now
+- **Dependency: PR #12 must be merged to `main` before Task 3 (first real deploy) can run** — Task 0, 1, and 2 do not require it and can proceed now
+- Terraform state for the shared project is stored remotely in a GCS bucket (not locally) so any teammate can run `terraform apply` and see the same state — bootstrapped once in Task 0
+- The bucket + Artifact Registry repo + API-enablement in Task 0 are bootstrapped via plain `gcloud`/`gsutil`, not Terraform — this is the one intentional exception to the "no manual gcloud, infra goes through Terraform" rule, because the Terraform remote-state backend cannot itself be created by the Terraform it will store state for
+
+---
+
+### Task 0: Phase-independent prerequisites
+
+These don't depend on any other task and don't get blocked by anything — do this first so every later task has what it needs already in place.
+
+**Files:**
+- Create: `infra/terraform/backend.tf`
+
+**Interfaces:**
+- Produces: a GCS bucket for Terraform remote state, an Artifact Registry repo for built images, and the GCP APIs every later task calls — consumed by Task 2 (`backend.tf`) and Task 3/4 (`gcloud builds submit` target repo)
+
+- [ ] **Step 1: Enable required GCP APIs**
+
+```bash
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  iamcredentials.googleapis.com \
+  secretmanager.googleapis.com \
+  storage.googleapis.com \
+  --project project-3bcd6d36-2338-4b32-848
+```
+Expected: command completes with no error (each API may already be enabled — that's fine, `enable` is idempotent)
+
+- [ ] **Step 2: Create the GCS bucket for Terraform remote state**
+
+```bash
+gcloud storage buckets create gs://project-3bcd6d36-2338-4b32-848-tfstate \
+  --project project-3bcd6d36-2338-4b32-848 \
+  --location asia-northeast1 \
+  --uniform-bucket-level-access
+```
+Expected: bucket created. If it already exists (`ServiceException: 409`), that's fine — treat as already-satisfied, not an error.
+
+- [ ] **Step 3: Create the Artifact Registry repo for built images**
+
+```bash
+gcloud artifacts repositories create cloud-run-source-deploy \
+  --project project-3bcd6d36-2338-4b32-848 \
+  --location asia-northeast1 \
+  --repository-format docker
+```
+Expected: repo created. If it already exists (`ALREADY_EXISTS`), that's fine.
+
+- [ ] **Step 4: Write `infra/terraform/backend.tf`**
+
+```hcl
+# infra/terraform/backend.tf
+terraform {
+  backend "gcs" {
+    bucket = "project-3bcd6d36-2338-4b32-848-tfstate"
+    prefix = "walking-skeleton"
+  }
+}
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add infra/terraform/backend.tf
+git commit -m "infra: bootstrap GCS remote state bucket and Artifact Registry repo"
+```
+
+Note: this task creates real cloud resources immediately (the bucket, the Artifact Registry repo, API enablement) — these are idempotent, low-risk, additive operations (nothing is deleted or overwritten). The human has already approved running this task (2026-09-12).
 
 ---
 
