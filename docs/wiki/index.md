@@ -14,5 +14,4 @@ okf_version: 0.2
 
 ## Decision / Research / Issue(技術的決定・調査結果・未解決の論点)
 
-まだページなし。2件以上の Raw Source が同じ概念に言及した時点で `type: decision`
-/ `research` / `issue` のいずれかで追加される。
+- [agents-cli-adoption](./concepts/agents-cli-adoption.md) — ADK開発ツール `google/agents-cli` の採用と各自のセットアップ手順
