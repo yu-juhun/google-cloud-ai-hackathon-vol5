@@ -25,9 +25,9 @@ resource "google_service_account" "frontend_sa" {
 
 locals {
   agents = {
-    search-agent    = { role = "search", image = var.search_agent_image }
-    judge-agent     = { role = "judge", image = var.judge_agent_image }
-    recommend-agent = { role = "recommend", image = var.recommend_agent_image }
+    search-agent    = { role = "search", image = var.search_agent_image, needs_places_secret = true, needs_vertex = false }
+    judge-agent     = { role = "judge", image = var.judge_agent_image, needs_places_secret = false, needs_vertex = true }
+    recommend-agent = { role = "recommend", image = var.recommend_agent_image, needs_places_secret = false, needs_vertex = true }
   }
 }
 
@@ -51,6 +51,32 @@ resource "google_cloud_run_v2_service" "agent" {
         name  = "AGENT_ROLE"
         value = each.value.role
       }
+      dynamic "env" {
+        for_each = each.value.needs_places_secret ? [1] : []
+        content {
+          name = "PLACES_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = "places-api-key"
+              version = "latest"
+            }
+          }
+        }
+      }
+      dynamic "env" {
+        for_each = each.value.needs_vertex ? [1] : []
+        content {
+          name  = "VERTEX_PROJECT_ID"
+          value = var.project_id
+        }
+      }
+      dynamic "env" {
+        for_each = each.value.needs_vertex ? [1] : []
+        content {
+          name  = "VERTEX_LOCATION"
+          value = "global"
+        }
+      }
       resources {
         limits = {
           cpu    = "1"
@@ -59,6 +85,22 @@ resource "google_cloud_run_v2_service" "agent" {
       }
     }
   }
+}
+
+# search-agent's runtime SA needs read access to the manually-created places-api-key secret
+resource "google_secret_manager_secret_iam_member" "search_agent_places_api_key" {
+  for_each  = { for k, v in local.agents : k => v if v.needs_places_secret }
+  secret_id = "places-api-key"
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.agent_sa[each.key].email}"
+}
+
+# judge-agent and recommend-agent call Vertex AI Gemini as their own runtime SA
+resource "google_project_iam_member" "agent_vertex_user" {
+  for_each = { for k, v in local.agents : k => v if v.needs_vertex }
+  project  = var.project_id
+  role     = "roles/aiplatform.user"
+  member   = "serviceAccount:${google_service_account.agent_sa[each.key].email}"
 }
 
 # Only backend-api's runtime SA may invoke the private agent services
