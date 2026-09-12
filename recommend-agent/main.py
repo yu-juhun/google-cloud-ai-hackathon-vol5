@@ -1,5 +1,6 @@
 """Gemini-backed recommendation service."""
 import json
+import os
 from fastapi import FastAPI
 from google import genai
 from google.genai import types
@@ -11,7 +12,7 @@ class Request(BaseModel):
     prompt: str | None = None
 @app.post('/execute')
 def execute(request: Request):
-    client = genai.Client(vertexai=True, project='storied-shelter-471306-a3', location='global')
+    client = genai.Client(vertexai=True, project=os.environ['VERTEX_PROJECT_ID'], location=os.environ.get('VERTEX_LOCATION', 'global'))
     p = f"車椅子利用者向けに候補を順位づける。JSONのみでordered_place_idsとreasons(place_idをキー、短い日本語理由)を返す。候補:{json.dumps(request.candidates, ensure_ascii=False)} 判定:{json.dumps(request.assessments, ensure_ascii=False)} 要望:{request.prompt or ''}"
     answer = json.loads(client.models.generate_content(model='gemini-2.5-flash', contents=p, config=types.GenerateContentConfig(response_mime_type='application/json')).text)
     places, assessments = {c['place_id']:c for c in request.candidates}, {a['place_id']:a for a in request.assessments}
