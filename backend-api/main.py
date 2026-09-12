@@ -13,7 +13,11 @@ from google.oauth2 import id_token
 from pydantic import BaseModel, ConfigDict, Field
 
 
-AGENT_URL = os.getenv("AGENT_URL", "").rstrip("/")
+AGENT_URLS = [
+    os.getenv("SEARCH_AGENT_URL", "").rstrip("/"),
+    os.getenv("JUDGE_AGENT_URL", "").rstrip("/"),
+    os.getenv("RECOMMEND_AGENT_URL", "").rstrip("/"),
+]
 app = FastAPI(title="Barrier-Free Restaurant Recommendation API")
 app.add_middleware(
     CORSMiddleware,
@@ -70,25 +74,23 @@ async def health() -> dict[str, str]:
 
 @app.post("/v1/recommendations")
 async def create_recommendations(request: RecommendationRequest) -> dict[str, Any]:
-    if not AGENT_URL:
+    if not all(AGENT_URLS):
         return JSONResponse(
             status_code=500,
-            content={"code": "INTERNAL_ERROR", "message": "AGENT_URL is not configured."},
+            content={"code": "INTERNAL_ERROR", "message": "agent URLs are not configured."},
         )
 
-    token = id_token.fetch_id_token(GoogleAuthRequest(), AGENT_URL)
+    payload: dict[str, Any] = request.model_dump()
     async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.post(
-            f"{AGENT_URL}/recommend",
-            headers={"Authorization": f"Bearer {token}"},
-            json=request.model_dump(),
-        )
-    if response.is_error:
-        return JSONResponse(
-            status_code=502,
-            content={
-                "code": "UPSTREAM_ERROR",
-                "message": "agent service did not return a recommendation.",
-            },
-        )
-    return response.json()
+        for agent_url in AGENT_URLS:
+            token = id_token.fetch_id_token(GoogleAuthRequest(), agent_url)
+            response = await client.post(
+                f"{agent_url}/execute",
+                headers={"Authorization": f"Bearer {token}"}, json=payload,
+            )
+            if response.is_error:
+                return JSONResponse(status_code=502, content={
+                    "code": "UPSTREAM_ERROR", "message": "agent service did not return a recommendation."
+                })
+            payload.update(response.json())
+    return {"recommendations": payload["recommendations"]}
