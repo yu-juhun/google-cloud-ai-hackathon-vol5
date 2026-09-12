@@ -1,0 +1,263 @@
+openapi: 3.1.0
+info:
+  title: Barrier-Free Restaurant Recommendation API
+  version: 1.0.0
+  description: 車椅子ユーザー向けに、利用しやすい飲食店を理由付きで推薦するAPI。
+  license:
+    name: UNLICENSED
+servers:
+  - url: http://localhost:8080
+    description: Local development
+security: []
+paths:
+  /v1/recommendations:
+    post:
+      summary: 条件に合うバリアフリー飲食店を推薦する
+      operationId: createRecommendations
+      tags:
+        - recommendations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecommendationRequest'
+            examples:
+              default:
+                summary: 福岡市中央区でイタリアンを探す
+                value:
+                  area: 福岡市中央区
+                  cuisine: イタリアン
+                  wheelchair_width_cm: 63
+                  prompt: 入口に段差がなく、トイレも使いやすい店がよい
+                  limit: 5
+      responses:
+        '200':
+          description: 推薦結果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecommendationResponse'
+              examples:
+                default:
+                  summary: 推薦結果の例
+                  value:
+                    recommendations:
+                      - rank: 1
+                        place_id: ChIJxxxxxxxxxxxxxxxxxxxxxx
+                        name: レストラン福岡
+                        address: 福岡県福岡市中央区天神1-1-1
+                        location:
+                          latitude: 33.5904
+                          longitude: 130.4017
+                        maps_url: https://www.google.com/maps/search/?api=1&query_place_id=ChIJxxxxxxxxxxxxxxxxxxxxxx
+                        accessibility:
+                          status: accessible
+                          confidence: high
+                          reasons:
+                            - condition: entrance
+                              result: supported
+                              evidence: 写真とレビューから、入口に大きな段差が見当たりません。
+                        recommendation_reason: 希望するイタリアンで、入口の段差がないという根拠があるためです。
+        '400':
+          description: 必須項目の不足または入力値の不正
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationError'
+              examples:
+                missingRequiredFields:
+                  summary: 必須項目が不足している
+                  value:
+                    code: VALIDATION_ERROR
+                    message: 入力内容を確認してください。
+                    fields:
+                      - field: area
+                        code: REQUIRED
+                        message: エリアを入力してください。
+                      - field: wheelchair_width_cm
+                        code: REQUIRED
+                        message: 車椅子の横幅をセンチメートルで入力してください。
+        '415':
+          description: Content-Type が application/json ではない
+        '500':
+          description: サーバー内部エラー
+components:
+  schemas:
+    RecommendationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - area
+        - wheelchair_width_cm
+      properties:
+        area:
+          type: string
+          minLength: 1
+          description: 行きたいエリア。デモでは福岡市内を指定する。
+          example: 福岡市中央区
+        cuisine:
+          type: string
+          minLength: 1
+          description: 希望する料理ジャンル。未指定でもよい。
+          example: イタリアン
+        wheelchair_width_cm:
+          type: number
+          exclusiveMinimum: 0
+          description: 車椅子の最大横幅（cm）。入口・通路を通れるかの判定に用いる。
+          example: 63
+        prompt:
+          type: string
+          minLength: 1
+          description: エージェントに伝える自由形式の要望。
+          example: 入口に段差がなく、トイレも使いやすい店がよい
+        limit:
+          type: integer
+          minimum: 1
+          default: 5
+          description: 返す店舗数。
+          example: 5
+    RecommendationResponse:
+      type: object
+      required:
+        - recommendations
+      properties:
+        recommendations:
+          type: array
+          description: 推薦順位順の店舗一覧。候補がない場合は空配列。
+          items:
+            $ref: '#/components/schemas/RestaurantRecommendation'
+    RestaurantRecommendation:
+      type: object
+      required:
+        - rank
+        - place_id
+        - name
+        - address
+        - location
+        - maps_url
+        - accessibility
+        - recommendation_reason
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+          description: 推薦順位。
+        place_id:
+          type: string
+          description: Google Placesのplace ID。
+        name:
+          type: string
+          description: 店舗名。
+        address:
+          type: string
+          description: 店舗住所。
+        location:
+          $ref: '#/components/schemas/Location'
+        maps_url:
+          type: string
+          format: uri
+          description: Google Mapsで店舗を開くURL。
+        accessibility:
+          $ref: '#/components/schemas/AccessibilityAssessment'
+        recommendation_reason:
+          type: string
+          description: 希望条件に照らして推薦する理由。
+    Location:
+      type: object
+      required:
+        - latitude
+        - longitude
+      properties:
+        latitude:
+          type: number
+          minimum: -90
+          maximum: 90
+        longitude:
+          type: number
+          minimum: -180
+          maximum: 180
+    AccessibilityAssessment:
+      type: object
+      required:
+        - status
+        - confidence
+        - reasons
+      properties:
+        status:
+          type: string
+          enum:
+            - accessible
+            - uncertain
+            - not_accessible
+          description: 入店可否の見立て。フロントエンドが○・△・✕へ表示変換する。
+        confidence:
+          type: string
+          enum:
+            - high
+            - medium
+            - low
+          description: 判定の確からしさ。
+        reasons:
+          type: array
+          description: レビュー、写真、アクセシビリティ属性などから得た判定根拠。
+          items:
+            $ref: '#/components/schemas/AssessmentReason'
+    AssessmentReason:
+      type: object
+      required:
+        - condition
+        - result
+        - evidence
+      properties:
+        condition:
+          type: string
+          description: 判定した観点。
+          example: entrance
+        result:
+          type: string
+          enum:
+            - supported
+            - unsupported
+            - unknown
+          description: 根拠が示す判定結果。
+        evidence:
+          type: string
+          description: 根拠の要約。
+    ValidationError:
+      type: object
+      required:
+        - code
+        - message
+        - fields
+      properties:
+        code:
+          type: string
+          const: VALIDATION_ERROR
+        message:
+          type: string
+          description: エラーの概要。
+        fields:
+          type: array
+          minItems: 1
+          description: 項目ごとの入力エラー。
+          items:
+            $ref: '#/components/schemas/FieldError'
+    FieldError:
+      type: object
+      required:
+        - field
+        - code
+        - message
+      properties:
+        field:
+          type: string
+          description: エラーになったリクエスト項目名。
+        code:
+          type: string
+          enum:
+            - REQUIRED
+            - INVALID_VALUE
+        message:
+          type: string
+          description: 項目ごとのエラー説明。
