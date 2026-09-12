@@ -1,11 +1,16 @@
 import { mockRecommendations } from './mockData'
 import type {
+  AssessmentResult,
   RecommendationRequest,
   RecommendationResponse,
   ValidationError,
 } from './types'
 
+const DEFAULT_API_BASE_URL =
+  'https://backend-api-378214973378.asia-northeast1.run.app'
+
 export interface RecommendationClient {
+  readonly mode: 'mock' | 'http'
   createRecommendations(
     request: RecommendationRequest,
     signal?: AbortSignal,
@@ -77,6 +82,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 
 function createMockClient(mockDelayMs: number): RecommendationClient {
   return {
+    mode: 'mock',
     async createRecommendations(request, signal) {
       const validationError = validateRequest(request)
       if (validationError) throw new ApiValidationError(validationError)
@@ -92,8 +98,41 @@ function createMockClient(mockDelayMs: number): RecommendationClient {
   }
 }
 
+function normalizeAssessmentResult(result: string): AssessmentResult {
+  const aliases: Record<string, AssessmentResult> = {
+    supported: 'supported',
+    unsupported: 'unsupported',
+    unknown: 'unknown',
+    accessible: 'supported',
+    not_accessible: 'unsupported',
+    uncertain: 'unknown',
+  }
+
+  return aliases[result] ?? 'unknown'
+}
+
+/**
+ * 検証用backend-apiは判定根拠にも店舗全体のstatus値を返すことがある。
+ * OpenAPIを画面側の正本に保ったまま、通信境界で互換値へ変換する。
+ */
+function normalizeResponse(response: RecommendationResponse): RecommendationResponse {
+  return {
+    recommendations: response.recommendations.map((recommendation) => ({
+      ...recommendation,
+      accessibility: {
+        ...recommendation.accessibility,
+        reasons: recommendation.accessibility.reasons.map((reason) => ({
+          ...reason,
+          result: normalizeAssessmentResult(reason.result as string),
+        })),
+      },
+    })),
+  }
+}
+
 function createHttpClient(baseUrl: string): RecommendationClient {
   return {
+    mode: 'http',
     async createRecommendations(request, signal) {
       let response: Response
       try {
@@ -121,14 +160,14 @@ function createHttpClient(baseUrl: string): RecommendationClient {
         )
       }
 
-      return (await response.json()) as RecommendationResponse
+      return normalizeResponse((await response.json()) as RecommendationResponse)
     },
   }
 }
 
 export function createRecommendationClient({
-  mode = import.meta.env.VITE_API_MODE ?? 'mock',
-  baseUrl = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080',
+  mode = import.meta.env.VITE_API_MODE ?? 'http',
+  baseUrl = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL,
   mockDelayMs = 650,
 }: ClientOptions = {}): RecommendationClient {
   return mode === 'http' ? createHttpClient(baseUrl) : createMockClient(mockDelayMs)
