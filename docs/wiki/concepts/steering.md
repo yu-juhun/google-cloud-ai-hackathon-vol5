@@ -15,6 +15,13 @@ sources:
     resource: https://zenn.dev/hackathons/google-cloud-japan-ai-hackathon-vol5
     title: "Google Cloud Japan AI Hackathon vol.5 募集要項"
     credibility_signals: "primary-source"
+  - id: kickoff-board
+    resource: docs/wiki/log.md#2026-09-12
+    title: "キックオフ合意ボードでのチーム議論(4項目とも確定)"
+    credibility_signals: "team-internal-agreement"
+verified:
+  - by: human:juhun.yu
+    at: 2026-09-12
 ---
 
 # Steering: バリアフリー飲食店 推薦エージェント
@@ -36,6 +43,15 @@ User -> [Web UI] -> [Orchestrator / ADK Multi-Agent]
                         - 推薦エージェント: スコア + 希望条件を突き合わせ、理由付きで推薦
 ```
 
+キックオフ会議で確定した実装方針[^kickoff-board]:
+
+- 実装優先順位は **検索エージェント → 判定エージェント → 推薦エージェント** の順
+- 判定エージェントは**写真とレビューテキストの両方**を見て判定する
+- Google Places APIでカバーできない領域は、Google Mapsやその他の情報源で補う(要調査・検討)。
+  Places APIのデータが不足していても構わない — むしろそこを技術的にカバーすることが差別化点
+- 判定結果はマップ上に**○・△・✕**で入店可否を表示するUIとする
+- 実行系はCloud Run(またはAgent Runtime)+ ADKを基本とするが、その他の構成は状況に応じて変える余地を残す
+
 判定の情報源はGoogle Maps API(場所詳細/レビュー/写真)を主とする[^kickoff-brainstorm]。
 判定方式の具体的なモデル呼び出し方は未確定で、検証しながら決定する[^kickoff-brainstorm]。
 
@@ -44,6 +60,19 @@ User -> [Web UI] -> [Orchestrator / ADK Multi-Agent]
 車椅子ユーザーは店舗の「バリアフリー表記」だけでは実際に入店・利用できるか判断できないことが多い。
 レビューや写真から段差・通路幅・トイレの有無などを人が確認するのは高コストであり、AIエージェントが
 自律的に情報を集めて判断することで、この負担を減らす。
+
+バリアフリー情報だけを提供するサービスは既にあるが、個人化された「やりたいこと・行きたいところ」との
+掛け算(パーソナライズされた推薦)が不足している。このエージェントはその不足を解決する立ち位置を取る[^kickoff-board]。
+
+## デモの優先順位(キックオフ会議で確定)
+
+ハッカソン当日のデモは3時間程度の枠のため、スコープを以下のように絞る[^kickoff-board]:
+
+- **最優先(コア機能)**: 「実際にその店に入れるか・入れないか」の判定。ここが提供価値の核
+- **優先度を下げてよい部分**: エリア・料理ジャンルでの店探し(検索体験)。最悪、モックでも構わない
+- デモ対象エリアは**福岡市**に限定する
+- 地域による区別(方言・慣習の違い等)自体は将来的に必要だが、今回は非エンジニア担当メンバー
+  (白井さん)の想定条件を前提にデモを組み立てる
 
 ## コンテスト要件
 
@@ -59,14 +88,17 @@ Google Cloud Japan AI Hackathon vol.5[^zenn-hackathon-page]
 
 ## 体制と担当
 
-4人チーム[^kickoff-brainstorm]:
+4人チーム[^kickoff-brainstorm]。キックオフ会議で担当者名まで確定した[^kickoff-board]:
 
 | 担当 | 役割 | 主な作業ディレクトリ(実装フェーズで作成) |
 |---|---|---|
-| クラウドエンジニア(あなた) | GCPインフラ全体(Cloud Run, IAM, デプロイ)、ADK基盤構築、3エージェントのオーケストレーション設計 | `agents/orchestrator/` |
-| バックエンドエンジニア | 検索/判定/推薦エージェントのロジック実装、Places API連携 | `agents/search/`, `agents/judge/`, `agents/recommend/` |
-| 学生 | フロントエンド(Web UI)、デモ用データ・シナリオ作成 | `frontend/` |
-| 非エンジニア | 審査基準に沿ったプロジェクト説明・アーキテクチャ図・デモ動画・提出物まとめ、UXレビュー | `docs/submission/` |
+| 劉さん(クラウドエンジニア) | GCPインフラ全体(Cloud Run, IAM, デプロイ)、ADK基盤構築、3エージェントのオーケストレーション設計 | `agents/orchestrator/` |
+| 中村さん(バックエンドエンジニア) | 検索/判定/推薦エージェントのロジック実装、Places API連携 | `agents/search/`, `agents/judge/`, `agents/recommend/` |
+| 松野さん(学生) | フロントエンド(Web UI)、デモ用データ・シナリオ作成 | `frontend/` |
+| 白井さん(非エンジニア) | 審査基準に沿ったプロジェクト説明・アーキテクチャ図・デモ動画・提出物まとめ、UXレビュー | `docs/submission/` |
+
+進め方: 中村さんが検索/判定エージェントの実装を進めている間、他のメンバーは自分の担当領域を並行して
+進める(直列に待たない)[^kickoff-board]。
 
 ## スコープ外(今回はやらない)
 
@@ -115,3 +147,12 @@ Google Cloud Japan AI Hackathon vol.5[^zenn-hackathon-page]
 
 - APIキー等の秘密情報はこのリポジトリにコミットしない。`.gitignore` で `.env` 等を除外し、
   各自のローカル/CI環境の環境変数・Secret Managerで管理する
+
+## 未確定事項(継続検討)
+
+キックオフ会議では4項目とも大枠は確定したが、以下は次回までの継続検討事項として残っている[^kickoff-board]:
+
+- リアルタイムのコミュニケーション手段を何にするか(Slack / Discord等)
+- PRレビューを担当領域外の誰に頼むか、毎回決めるか固定するか
+- 1人あたり週に確保できる作業時間はどのくらいか
+- 中間チェックイン(進捗共有)の頻度をいつにするか
