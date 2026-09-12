@@ -14,7 +14,7 @@ import { RecommendationCard } from './components/RecommendationCard'
 import { SearchForm } from './components/SearchForm'
 
 export const initialRequest: RecommendationRequest = {
-  area: '福岡市中央区',
+  area: '福岡市',
   cuisine: 'イタリアン',
   wheelchair_width_cm: 63,
   prompt: '入口に段差がなく、トイレも使いやすい店',
@@ -25,9 +25,15 @@ const defaultClient = createRecommendationClient()
 
 interface AppProps {
   client?: RecommendationClient
+  mapsApiKey?: string
+  mapsMapId?: string
 }
 
-export function App({ client = defaultClient }: AppProps) {
+export function App({
+  client = defaultClient,
+  mapsApiKey,
+  mapsMapId,
+}: AppProps) {
   const [recommendations, setRecommendations] = useState<RestaurantRecommendation[]>([])
   const [selectedPlaceId, setSelectedPlaceId] = useState<string | null>(null)
   const [fieldErrors, setFieldErrors] = useState<FieldError[]>([])
@@ -49,7 +55,7 @@ export function App({ client = defaultClient }: AppProps) {
       try {
         const response = await client.createRecommendations(request, controller.signal)
         setRecommendations(response.recommendations)
-        setSelectedPlaceId(response.recommendations[0]?.place_id ?? null)
+        setSelectedPlaceId(null)
         setSearchedArea(request.area)
       } catch (error) {
         if (error instanceof DOMException && error.name === 'AbortError') return
@@ -134,6 +140,8 @@ export function App({ client = defaultClient }: AppProps) {
                 recommendations={recommendations}
                 selectedPlaceId={selectedPlaceId}
                 onSelect={setSelectedPlaceId}
+                apiKey={mapsApiKey}
+                mapId={mapsMapId}
               />
             </div>
           ) : (
@@ -155,7 +163,11 @@ export function App({ client = defaultClient }: AppProps) {
       </main>
 
       <footer>
-        <span>表示中の店舗名・評価はデモ用です</span>
+        <span>
+          {client.mode === 'mock'
+            ? '店舗名・所在地は実在情報を使用し、AIの入店可否判定・推薦理由はデモ用です'
+            : '検索結果と入店可否判定は、推薦APIが公開情報をもとに生成しています'}
+        </span>
       </footer>
     </div>
   )
@@ -168,7 +180,7 @@ function LoadingState() {
         <span className="loading-orbit" aria-hidden="true"><i /></span>
         <div>
           <h3>AIが行きやすさを確認中</h3>
-          <p>入口、通路、トイレの情報を読み取っています…</p>
+          <p>入口、通路、トイレの情報を確認しています（通常15〜40秒）…</p>
         </div>
       </div>
       <div className="skeleton-grid" aria-hidden="true">

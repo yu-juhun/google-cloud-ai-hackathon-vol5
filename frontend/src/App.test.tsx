@@ -1,7 +1,32 @@
+import type { PropsWithChildren, ReactNode } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 import { createRecommendationClient } from './api/client'
+
+vi.mock('@vis.gl/react-google-maps', () => ({
+  APIProvider: ({ children }: PropsWithChildren) => <>{children}</>,
+  Map: ({ children }: PropsWithChildren) => <div data-testid="google-map">{children}</div>,
+  AdvancedMarker: ({
+    children,
+    title,
+    onClick,
+  }: {
+    children: ReactNode
+    title: string
+    onClick: () => void
+  }) => (
+    <button type="button" aria-label={title} onClick={onClick}>
+      {children}
+    </button>
+  ),
+  InfoWindow: ({ children }: PropsWithChildren) => (
+    <div data-testid="info-window">{children}</div>
+  ),
+  useAdvancedMarkerRef: () => [vi.fn(), {}],
+  useMap: () => null,
+  useMapsLibrary: () => null,
+}))
 
 describe('App', () => {
   it('loads mock recommendations and exposes the assessment without color alone', async () => {
@@ -9,7 +34,7 @@ describe('App', () => {
       <App client={createRecommendationClient({ mode: 'mock', mockDelayMs: 0 })} />,
     )
 
-    expect((await screen.findAllByText('天神みんなのテーブル')).length).toBeGreaterThan(0)
+    expect((await screen.findAllByText('リタの農園')).length).toBeGreaterThan(0)
     expect(screen.getAllByText('利用しやすい').length).toBeGreaterThan(0)
     expect(screen.getAllByText('要確認').length).toBeGreaterThan(0)
     expect(screen.getAllByText('利用が難しい').length).toBeGreaterThan(0)
@@ -21,7 +46,7 @@ describe('App', () => {
     render(
       <App client={createRecommendationClient({ mode: 'mock', mockDelayMs: 0 })} />,
     )
-    await screen.findAllByText('天神みんなのテーブル')
+    await screen.findAllByText('リタの農園')
 
     fireEvent.change(screen.getByLabelText(/行きたいエリア/), {
       target: { value: '' },
@@ -31,5 +56,25 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByText('未入力')).toBeInTheDocument()
     })
+  })
+
+  it('opens the matching map info window when a recommendation card is selected', async () => {
+    render(
+      <App
+        client={createRecommendationClient({ mode: 'mock', mockDelayMs: 0 })}
+        mapsApiKey="test-api-key"
+        mapsMapId="test-map-id"
+      />,
+    )
+
+    await screen.findAllByText('リタの農園')
+    const restaurantCard = screen.getByRole('button', {
+      name: 'パックスロマーナを地図で選択',
+    })
+    fireEvent.click(restaurantCard)
+
+    expect(restaurantCard).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('パックスロマーナの情報')).toBeInTheDocument()
+    expect(screen.queryByLabelText('リタの農園の情報')).not.toBeInTheDocument()
   })
 })
