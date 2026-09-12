@@ -357,23 +357,60 @@ git fetch origin main
 git merge origin/main
 ```
 
-- [ ] **Step 3: Build and push all 5 images — notify the human and wait for approval before running**
+- [ ] **Step 3: Build and push the 4 non-frontend images, then apply Terraform for everything except `frontend` — notify the human and wait for approval before running**
 
-Say: "Ready to build and deploy all 5 services to `project-3bcd6d36-2338-4b32-848`. Proceed?" Wait for explicit yes.
+Frontend is deployed in two passes because Vite bakes `VITE_API_BASE_URL` in at build time, and the real `backend-api` URL isn't known until backend-api itself is deployed. Pass 1 stands up backend-api + the 3 agents; Pass 2 (Step 5-6) rebuilds frontend with the real URL and deploys it.
+
+Say: "Ready to build and deploy backend-api + the 3 agent services to `project-3bcd6d36-2338-4b32-848` (frontend follows in a second pass once backend-api's URL is known). Proceed?" Wait for explicit yes.
 
 ```bash
-for svc in frontend backend-api search-agent judge-agent recommend-agent; do
+for svc in backend-api search-agent judge-agent recommend-agent; do
   gcloud builds submit "$svc" \
     --tag "asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/$svc" \
     --project project-3bcd6d36-2338-4b32-848
 done
 ```
 
-- [ ] **Step 4: Apply the Terraform with the built image URIs**
+- [ ] **Step 4: Apply Terraform, targeting everything except `frontend`**
 
 ```bash
 cd infra/terraform
 terraform init
+terraform apply \
+  -target=google_cloud_run_v2_service.agent \
+  -target=google_cloud_run_v2_service_iam_member.agent_invoker \
+  -target=google_cloud_run_v2_service.backend_api \
+  -target=google_cloud_run_v2_service_iam_member.backend_api_public \
+  -var="frontend_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/frontend:placeholder" \
+  -var="backend_api_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/backend-api" \
+  -var="search_agent_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/search-agent" \
+  -var="judge_agent_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/judge-agent" \
+  -var="recommend_agent_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/recommend-agent"
+```
+Expected: `terraform apply` completes and prints `backend_api_url`, `search_agent_url`, `judge_agent_url`, `recommend_agent_url` (the `frontend_image` placeholder value is unused this pass — `frontend`'s own resource isn't targeted, so it stays uncreated for now)
+
+- [ ] **Step 5: Build the real `frontend` image with `backend_api_url` baked in, then apply the rest of the Terraform**
+
+```bash
+gcloud builds submit frontend \
+  --tag asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/frontend \
+  --project project-3bcd6d36-2338-4b32-848 \
+  --substitutions=_VITE_API_MODE=http,_VITE_API_BASE_URL="<backend_api_url from Step 4>" \
+  --config=- <<'EOF'
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg=VITE_API_MODE=$_VITE_API_MODE
+      - --build-arg=VITE_API_BASE_URL=$_VITE_API_BASE_URL
+      - -t
+      - asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/frontend
+      - frontend
+images:
+  - asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/frontend
+EOF
+
+cd infra/terraform
 terraform apply \
   -var="frontend_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/frontend" \
   -var="backend_api_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/backend-api" \
@@ -381,16 +418,16 @@ terraform apply \
   -var="judge_agent_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/judge-agent" \
   -var="recommend_agent_image=asia-northeast1-docker.pkg.dev/project-3bcd6d36-2338-4b32-848/cloud-run-source-deploy/recommend-agent"
 ```
-Expected: `terraform apply` completes and prints all 5 URL outputs
+Expected: `terraform apply` (no `-target` this time) completes and prints all 5 URL outputs, including `frontend_url`
 
-- [ ] **Step 5: End-to-end verification**
+- [ ] **Step 6: End-to-end verification**
 
 Run: `curl -X POST "<backend_api_url>/v1/recommendations" -H "Content-Type: application/json" -d '{"area":"福岡市中央区","wheelchair_width_cm":63}'`
 Expected: `200` response with a `recommendations` array (PR #12's smoke content, not real Places/Gemini data yet)
 
-Open `<frontend_url>` in a browser and confirm the SPA loads (it defaults to mock mode per `frontend/README.md` unless `VITE_API_MODE=http` was set at build time — note this as a follow-up if the team wants the deployed frontend to hit the real backend-api rather than its mock).
+Open `<frontend_url>` in a browser and confirm the SPA loads AND actually calls the real `backend-api` (check browser devtools network tab for a request to `<backend_api_url>/v1/recommendations`, not mock data) — this confirms Step 5's build-arg baking worked, not just that the container starts.
 
-- [ ] **Step 6: Record the live URLs for the team**
+- [ ] **Step 7: Record the live URLs for the team**
 
 Create `docs/wiki/concepts/deployed-endpoints.md` (frontmatter `type: decision`, `owner: infra`, sourced from `service-topology.md`) listing all 5 URLs, following the same structure as other decision pages in `docs/wiki/concepts/`. Update `docs/wiki/index.md` and `docs/wiki/log.md` per the OKF bundle convention.
 
@@ -459,16 +496,55 @@ jobs:
 
       - uses: google-github-actions/setup-gcloud@v2
 
-      - name: Build all 5 images
+      - name: Build backend-api and the 3 agent images
         run: |
-          for svc in frontend backend-api search-agent judge-agent recommend-agent; do
+          for svc in backend-api search-agent judge-agent recommend-agent; do
             gcloud builds submit "$svc" --tag "$REGISTRY/$svc" --project "$PROJECT_ID"
           done
 
-      - name: Apply Terraform
+      - name: Apply Terraform for everything except frontend
         working-directory: infra/terraform
         run: |
           terraform init
+          terraform apply -auto-approve \
+            -target=google_cloud_run_v2_service.agent \
+            -target=google_cloud_run_v2_service_iam_member.agent_invoker \
+            -target=google_cloud_run_v2_service.backend_api \
+            -target=google_cloud_run_v2_service_iam_member.backend_api_public \
+            -var="frontend_image=$REGISTRY/frontend:placeholder" \
+            -var="backend_api_image=$REGISTRY/backend-api" \
+            -var="search_agent_image=$REGISTRY/search-agent" \
+            -var="judge_agent_image=$REGISTRY/judge-agent" \
+            -var="recommend_agent_image=$REGISTRY/recommend-agent"
+
+      - name: Read backend-api URL
+        id: backend_url
+        working-directory: infra/terraform
+        run: echo "url=$(terraform output -raw backend_api_url)" >> "$GITHUB_OUTPUT"
+
+      - name: Build frontend with the real backend-api URL baked in
+        run: |
+          gcloud builds submit frontend \
+            --tag "$REGISTRY/frontend" \
+            --project "$PROJECT_ID" \
+            --substitutions=_VITE_API_MODE=http,_VITE_API_BASE_URL="${{ steps.backend_url.outputs.url }}" \
+            --config=- <<'CFGEOF'
+          steps:
+            - name: gcr.io/cloud-builders/docker
+              args:
+                - build
+                - --build-arg=VITE_API_MODE=$_VITE_API_MODE
+                - --build-arg=VITE_API_BASE_URL=$_VITE_API_BASE_URL
+                - -t
+                - ${REGISTRY}/frontend
+                - frontend
+          images:
+            - ${REGISTRY}/frontend
+          CFGEOF
+
+      - name: Apply Terraform for frontend
+        working-directory: infra/terraform
+        run: |
           terraform apply -auto-approve \
             -var="frontend_image=$REGISTRY/frontend" \
             -var="backend_api_image=$REGISTRY/backend-api" \
@@ -494,5 +570,6 @@ Say: "CI/CD workflow ready. Merging this PR to `main` will trigger the first aut
 
 - This plan replaces an earlier version whose Task 1 built `search-agent`/`judge-agent`/`recommend-agent` as ADK apps via `agents-cli scaffold`. That work was discarded (never pushed) after discovering a teammate's in-flight PR #12 building the same services as plain FastAPI with a different endpoint contract (`/execute`, not `/invoke`) and its own ID-token auth already wired. This plan is now infra-only and treats PR #12 (and merged PR #11 for frontend) as the source of truth for application code.
 - Task 3 is explicitly gated on PR #12's merge status — Step 1 checks it and stops rather than guessing or waiting silently.
-- The frontend's `VITE_API_MODE`/`VITE_API_BASE_URL` are Vite build-time env vars, not runtime — Task 3 Step 5 flags that the deployed frontend defaults to mock mode unless the build step is later updated to bake in `VITE_API_MODE=http` and the real `backend-api` URL. This plan does not attempt that wiring since it's a build-time coupling between Task 1's Dockerfile and Task 3's deploy step that only becomes concrete once `backend_api_url` is known — noted as a follow-up, not silently done or silently skipped.
+- Task 0 was added after realizing two phase-independent prerequisites were missing: a GCS bucket for Terraform remote state (so any teammate, not just this worktree, can run `terraform apply` against consistent state) and the Artifact Registry repo `gcloud builds submit --tag` pushes into (it doesn't auto-create). Both are bootstrapped via plain `gcloud`, the one deliberate exception to "infra goes through Terraform" — the backend that stores Terraform's state can't itself be Terraform-managed state.
+- The frontend's `VITE_API_MODE`/`VITE_API_BASE_URL` are Vite build-time env vars, not runtime. Task 3 now deploys in two passes to solve this properly instead of leaving it as an open follow-up: Pass 1 (Steps 3-4) stands up backend-api + the 3 agents and reads `backend_api_url` from Terraform output; Pass 2 (Steps 5-6) rebuilds `frontend`'s image with that real URL baked in via `--build-arg`/Cloud Build substitutions, then applies the rest of the Terraform. Task 4's CI workflow mirrors this same two-pass sequence.
 - IAM design: the 3 agent services are `INGRESS_TRAFFIC_INTERNAL_ONLY` and only `backend-api`'s service account may invoke them (`google_cloud_run_v2_service_iam_member.agent_invoker`), matching PR #12's ID-token auth code, which only makes sense if the agents actually reject unauthenticated calls.
