@@ -1,0 +1,30 @@
+{
+  "name": "wheelchair-restaurant-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "generate:api": "openapi-typescript ../api/openapi.yaml --default-non-nullable false -o src/api/schema.ts",
+    "build": "npm run generate:api && tsc --noEmit && vite build",
+    "test": "npm run generate:api && vitest run",
+    "test:watch": "vitest",
+    "check": "npm run test && npm run build"
+  },
+  "dependencies": {
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "jsdom": "30.0.1",
+    "openapi-typescript": "7.13.0",
+    "typescript": "5.9.3",
+    "vite": "8.3.0",
+    "vitest": "5.0.0"
+  }
+}
