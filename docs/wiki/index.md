@@ -5,6 +5,8 @@ okf_version: 0.2
 # Index: hackathon vol.5 チーム知識wiki
 
 このバンドルの規約は [schema.md](./schema.md) を参照。
+このバンドルは [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format)
+準拠。OKF自体の仕様がわからない場合は [公式SPEC.md](https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md) を参照。
 
 ## Steering(方針・体制。作業前に必ず読む)
 
