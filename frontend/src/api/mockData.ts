@@ -1,47 +1,53 @@
 import type { RestaurantRecommendation } from './types'
 
-// 実在店舗のアクセシビリティ情報と誤解されないよう、すべて架空の名称にする。
+// 店舗名・住所・座標・Place IDは、2026-09-12時点のPlaces API掲載情報を使用する。
+// 入店可否と推薦理由はデモ用の判定であり、最新状況は店舗への確認を前提とする。
 export const mockRecommendations: RestaurantRecommendation[] = [
   {
     rank: 1,
-    place_id: 'mock-tenjin-table',
-    name: '天神みんなのテーブル',
-    address: '福岡県福岡市中央区天神1丁目（デモ用）',
-    location: { latitude: 33.5906, longitude: 130.4019 },
+    place_id: 'ChIJq_z8lPGRQTURbZkTEIGlpQs',
+    name: 'リタの農園',
+    address: '福岡県福岡市博多区築港本町13-6 1F',
+    location: { latitude: 33.6033538, longitude: 130.3993869 },
     maps_url:
-      'https://www.google.com/maps/search/?api=1&query=%E5%A4%A9%E7%A5%9E',
+      'https://www.google.com/maps/search/?api=1&query=%E3%83%AA%E3%82%BF%E3%81%AE%E8%BE%B2%E5%9C%92&query_place_id=ChIJq_z8lPGRQTURbZkTEIGlpQs',
     accessibility: {
       status: 'accessible',
-      confidence: 'high',
+      confidence: 'medium',
       reasons: [
         {
           condition: 'entrance',
           result: 'supported',
-          evidence: '入口は歩道からフラットで、自動ドアの写真を確認できました。',
-        },
-        {
-          condition: 'aisle',
-          result: 'supported',
-          evidence: '店内通路は約90cmあり、63cm幅の車いすで通行できる見込みです。',
+          evidence: 'Google Mapsの掲載属性で、車いす対応の入口ありとされています。',
         },
         {
           condition: 'restroom',
           result: 'supported',
-          evidence: '車いす対応トイレの設備情報があります。',
+          evidence: 'Google Mapsの掲載属性で、車いす対応トイレありとされています。',
+        },
+        {
+          condition: 'parking',
+          result: 'supported',
+          evidence: 'Google Mapsの掲載属性で、車いす対応駐車場ありとされています。',
+        },
+        {
+          condition: 'aisle',
+          result: 'unknown',
+          evidence: '店内の通路幅と座席周辺の寸法は確認できていません。',
         },
       ],
     },
     recommendation_reason:
-      '入口・通路・トイレの3項目で利用しやすい根拠が揃っており、ご希望に最も近い候補です。',
+      '入口・トイレ・駐車場の対応情報があります。通路幅は未確認のため、来店前の確認をおすすめします。',
   },
   {
     rank: 2,
-    place_id: 'mock-hakata-kitchen',
-    name: '博多よりみちキッチン',
-    address: '福岡県福岡市博多区博多駅中央街（デモ用）',
-    location: { latitude: 33.5898, longitude: 130.4207 },
+    place_id: 'ChIJubcxBKuRQTURl9Rk1qtIEB0',
+    name: 'パックスロマーナ',
+    address: '福岡県福岡市中央区天神3-7-3 タワーズ天神 6F/7F',
+    location: { latitude: 33.5936495, longitude: 130.3957651 },
     maps_url:
-      'https://www.google.com/maps/search/?api=1&query=%E5%8D%9A%E5%A4%9A%E9%A7%85',
+      'https://www.google.com/maps/search/?api=1&query=%E3%83%91%E3%83%83%E3%82%AF%E3%82%B9%E3%83%AD%E3%83%9E%E3%83%BC%E3%83%8A&query_place_id=ChIJubcxBKuRQTURl9Rk1qtIEB0',
     accessibility: {
       status: 'uncertain',
       confidence: 'medium',
@@ -49,31 +55,31 @@ export const mockRecommendations: RestaurantRecommendation[] = [
         {
           condition: 'entrance',
           result: 'supported',
-          evidence: 'ビル入口にはスロープがあるというレビューを確認しました。',
+          evidence: 'Google Mapsの掲載属性で、車いす対応の入口ありとされています。',
         },
         {
-          condition: 'aisle',
-          result: 'unknown',
-          evidence: 'テーブル間の通路幅を判断できる情報が見つかりませんでした。',
+          condition: 'seating',
+          result: 'supported',
+          evidence: 'Google Mapsの掲載属性で、車いす対応の座席ありとされています。',
         },
         {
           condition: 'restroom',
-          result: 'unknown',
-          evidence: '店内トイレの広さは確認できていません。',
+          result: 'unsupported',
+          evidence: 'Google Mapsの掲載属性では、車いす対応トイレなしとされています。',
         },
       ],
     },
     recommendation_reason:
-      '入口は利用できる可能性がありますが、通路幅とトイレは来店前の確認をおすすめします。',
+      '入口と座席は対応情報がありますが、トイレは希望条件に合わない可能性があるため事前確認が必要です。',
   },
   {
     rank: 3,
-    place_id: 'mock-daimyo-bistro',
-    name: '大名こみちビストロ',
-    address: '福岡県福岡市中央区大名2丁目（デモ用）',
-    location: { latitude: 33.5879, longitude: 130.3952 },
+    place_id: 'ChIJ78dm0oeRQTURvB4gHDXNJ7A',
+    name: 'Ristorante fanfare',
+    address: '福岡県福岡市中央区大名2-10-39 サンマリノビル 2F',
+    location: { latitude: 33.5901856, longitude: 130.3929018 },
     maps_url:
-      'https://www.google.com/maps/search/?api=1&query=%E7%A6%8F%E5%B2%A1%E5%B8%82%E5%A4%A7%E5%90%8D',
+      'https://www.google.com/maps/search/?api=1&query=Ristorante%20fanfare&query_place_id=ChIJ78dm0oeRQTURvB4gHDXNJ7A',
     accessibility: {
       status: 'not_accessible',
       confidence: 'high',
@@ -81,16 +87,21 @@ export const mockRecommendations: RestaurantRecommendation[] = [
         {
           condition: 'entrance',
           result: 'unsupported',
-          evidence: '入口前に2段の階段があり、スロープは確認できませんでした。',
+          evidence: 'Google Mapsの掲載属性では、車いす対応の入口なしとされています。',
         },
         {
-          condition: 'aisle',
+          condition: 'seating',
+          result: 'unsupported',
+          evidence: 'Google Mapsの掲載属性では、車いす対応の座席なしとされています。',
+        },
+        {
+          condition: 'restroom',
           result: 'unknown',
-          evidence: '店内の通路幅を判断できる情報がありません。',
+          evidence: '車いす対応トイレについては掲載情報を確認できていません。',
         },
       ],
     },
     recommendation_reason:
-      '入口の階段を越える手段が確認できないため、現状では入店が難しい見込みです。',
+      '入口と座席の対応が確認できないため、現在の公開情報では利用が難しい見込みです。',
   },
 ]
