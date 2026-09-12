@@ -3,6 +3,20 @@
 このファイルは OKF v0.2 の producer-defined extension(§4.1)として、このバンドル固有の
 規約を定義する。すべての操作(`/okf-wiki ingest|query|lint`)はここに従う。
 
+## 公式リファレンス
+
+このバンドルは [Open Knowledge Format (OKF) v0.2](https://github.com/GoogleCloudPlatform/open-knowledge-format)
+に準拠する。このスキルを使わないAIエージェントやツールでこのバンドルを扱う場合、あるいは
+このファイルに書かれた規約の根拠を確認したい場合は、必ず以下の一次情報を参照すること
+(このファイルの記述と齟齬がある場合は公式仕様が優先する):
+
+- 仕様本文: https://github.com/GoogleCloudPlatform/open-knowledge-format/blob/main/SPEC.md
+  (frontmatter必須/推奨/オプションフィールド、`index.md`/`log.md`の形式、`sources[]`の構造などの正式定義)
+- リポジトリ本体(README・examples・reference agent実装): https://github.com/GoogleCloudPlatform/open-knowledge-format
+
+要点だけ先に知りたい場合は下記の各セクションで十分だが、フィールドの意味や仕様の解釈に
+迷った場合は上記を直接読むこと。
+
 ## 目的・範囲
 
 Google Cloud Japan AI Hackathon vol.5 向けプロジェクト
