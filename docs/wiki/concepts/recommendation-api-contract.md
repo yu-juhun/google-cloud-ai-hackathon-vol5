@@ -28,6 +28,7 @@ sources:
 - 必須入力の不足や値の不正は `400` を返し、`fields` 配列に項目別のエラーを含める
 - 結果には、地図表示用の座標、Google Maps URL、入店可否の判定、判定根拠、推薦理由を含める
 - 入店可否は `accessible` / `uncertain` / `not_accessible` とし、UI上で○・△・✕に変換する
+- Cloud Runのデプロイ先は `https://{service}-{project_number}.{region}.run.app` の形式でOpenAPIに定義し、デプロイ時の実値を設定する
 
 ## 根拠
 

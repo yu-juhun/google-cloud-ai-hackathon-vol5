@@ -6,6 +6,18 @@ info:
   license:
     name: UNLICENSED
 servers:
+  - url: https://{service}-{project_number}.{region}.run.app
+    description: Cloud Run deployment
+    variables:
+      service:
+        default: wheelchair-restaurant-api
+        description: Cloud Run service name
+      project_number:
+        default: '123456789012'
+        description: Google Cloud project number
+      region:
+        default: asia-northeast1
+        description: Cloud Run region
   - url: http://localhost:8080
     description: Local development
 security: []
