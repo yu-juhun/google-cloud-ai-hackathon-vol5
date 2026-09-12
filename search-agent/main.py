@@ -1,39 +1,25 @@
-"""ADK-backed stage service; AGENT_ROLE selects search, judge, or recommend."""
-
+"""Places API backed restaurant search service."""
 import os
-from hashlib import sha256
-from urllib.parse import quote_plus
-
-from fastapi import FastAPI
-from google.adk.agents import Agent
+import httpx
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
-
-ROLE = os.getenv("AGENT_ROLE", "search")
-adk_agent = Agent(name=f"{ROLE}_agent", model="gemini-3.7-flash", instruction=f"You are the {ROLE} stage.")
-app = FastAPI(title=f"{ROLE}-agent")
-
+app = FastAPI(title="search-agent")
+FIELDS = "places.id,places.displayName,places.formattedAddress,places.location,places.googleMapsUri,places.reviews,places.photos,places.accessibilityOptions"
 class Request(BaseModel):
     area: str = Field(min_length=1)
     cuisine: str | None = None
     wheelchair_width_cm: float = Field(gt=0)
     prompt: str | None = None
-    candidate: dict | None = None
-    assessment: dict | None = None
-
-@app.get('/health')
-def health(): return {'service': f'{ROLE}-agent', 'status': 'healthy'}
-
+    limit: int = Field(default=5, ge=1, le=20)
 @app.post('/execute')
-def execute(request: Request):
-    cuisine = request.cuisine or '飲食店'
-    candidate = request.candidate or {
-        'place_id': f"smoke-{sha256(f'{request.area}:{cuisine}'.encode()).hexdigest()[:16]}",
-        'name': f'{request.area} バリアフリー {cuisine}', 'address': request.area,
-        'location': {'latitude': 33.5904, 'longitude': 130.4017},
-        'maps_url': f"https://www.google.com/maps/search/?api=1&query={quote_plus(f'{request.area} {cuisine}')}"
-    }
-    if ROLE == 'search': return {'candidate': candidate}
-    assessment = request.assessment or {'status': 'uncertain', 'confidence': 'low', 'reasons': [{'condition': 'wheelchair_width_cm', 'result': 'unknown', 'evidence': f'車椅子の横幅 {request.wheelchair_width_cm:g}cm に対する店舗の実測情報は、まだ取得していません。'}]}
-    if ROLE == 'judge': return {'candidate': candidate, 'assessment': assessment}
-    extra = f' 要望: {request.prompt}' if request.prompt else ''
-    return {'recommendations': [{**candidate, 'rank': 1, 'accessibility': assessment, 'recommendation_reason': f'{request.area}で{cuisine}を探すための、外部情報連携前の検証用候補です。{extra}'}]}
+async def execute(request: Request):
+    key = os.environ.get('PLACES_API_KEY', '').strip()
+    if not key: raise HTTPException(500, 'PLACES_API_KEY is not configured')
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post('https://places.googleapis.com/v1/places:searchText', headers={'X-Goog-Api-Key': key, 'X-Goog-FieldMask': FIELDS}, json={'textQuery': f"{request.area} {request.cuisine or '飲食店'}", 'languageCode': 'ja', 'pageSize': request.limit})
+    if response.is_error: raise HTTPException(502, f'Places API error: {response.status_code}')
+    candidates = []
+    for p in response.json().get('places', []):
+        loc = p.get('location', {})
+        candidates.append({'place_id': p['id'], 'name': p.get('displayName', {}).get('text', ''), 'address': p.get('formattedAddress', ''), 'location': {'latitude': loc.get('latitude'), 'longitude': loc.get('longitude')}, 'maps_url': p.get('googleMapsUri', ''), 'reviews': [r.get('text', {}).get('text', '') for r in p.get('reviews', [])], 'photo_count': len(p.get('photos', [])), 'accessibility_options': p.get('accessibilityOptions', {})})
+    return {'candidates': candidates}

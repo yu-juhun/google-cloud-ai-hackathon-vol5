@@ -1,39 +1,23 @@
-"""ADK-backed stage service; AGENT_ROLE selects search, judge, or recommend."""
-
-import os
-from hashlib import sha256
-from urllib.parse import quote_plus
-
+"""Gemini-backed recommendation service."""
+import json
 from fastapi import FastAPI
-from google.adk.agents import Agent
-from pydantic import BaseModel, Field
-
-ROLE = os.getenv("AGENT_ROLE", "search")
-adk_agent = Agent(name=f"{ROLE}_agent", model="gemini-3.7-flash", instruction=f"You are the {ROLE} stage.")
-app = FastAPI(title=f"{ROLE}-agent")
-
+from google import genai
+from google.genai import types
+from pydantic import BaseModel
+app = FastAPI(title="recommend-agent")
 class Request(BaseModel):
-    area: str = Field(min_length=1)
-    cuisine: str | None = None
-    wheelchair_width_cm: float = Field(gt=0)
+    candidates: list[dict]
+    assessments: list[dict]
     prompt: str | None = None
-    candidate: dict | None = None
-    assessment: dict | None = None
-
-@app.get('/health')
-def health(): return {'service': f'{ROLE}-agent', 'status': 'healthy'}
-
 @app.post('/execute')
 def execute(request: Request):
-    cuisine = request.cuisine or '飲食店'
-    candidate = request.candidate or {
-        'place_id': f"smoke-{sha256(f'{request.area}:{cuisine}'.encode()).hexdigest()[:16]}",
-        'name': f'{request.area} バリアフリー {cuisine}', 'address': request.area,
-        'location': {'latitude': 33.5904, 'longitude': 130.4017},
-        'maps_url': f"https://www.google.com/maps/search/?api=1&query={quote_plus(f'{request.area} {cuisine}')}"
-    }
-    if ROLE == 'search': return {'candidate': candidate}
-    assessment = request.assessment or {'status': 'uncertain', 'confidence': 'low', 'reasons': [{'condition': 'wheelchair_width_cm', 'result': 'unknown', 'evidence': f'車椅子の横幅 {request.wheelchair_width_cm:g}cm に対する店舗の実測情報は、まだ取得していません。'}]}
-    if ROLE == 'judge': return {'candidate': candidate, 'assessment': assessment}
-    extra = f' 要望: {request.prompt}' if request.prompt else ''
-    return {'recommendations': [{**candidate, 'rank': 1, 'accessibility': assessment, 'recommendation_reason': f'{request.area}で{cuisine}を探すための、外部情報連携前の検証用候補です。{extra}'}]}
+    client = genai.Client(vertexai=True, project='storied-shelter-471306-a3', location='global')
+    p = f"車椅子利用者向けに候補を順位づける。JSONのみでordered_place_idsとreasons(place_idをキー、短い日本語理由)を返す。候補:{json.dumps(request.candidates, ensure_ascii=False)} 判定:{json.dumps(request.assessments, ensure_ascii=False)} 要望:{request.prompt or ''}"
+    answer = json.loads(client.models.generate_content(model='gemini-2.5-flash', contents=p, config=types.GenerateContentConfig(response_mime_type='application/json')).text)
+    places, assessments = {c['place_id']:c for c in request.candidates}, {a['place_id']:a for a in request.assessments}
+    out=[]
+    for rank, pid in enumerate(answer['ordered_place_ids'], 1):
+        if pid in places:
+            c,a=places[pid],assessments[pid]
+            out.append({'rank':rank,'place_id':pid,'name':c['name'],'address':c['address'],'location':c['location'],'maps_url':c['maps_url'],'accessibility':{'status':a['status'],'confidence':a['confidence'],'reasons':a['reasons']},'recommendation_reason':answer['reasons'].get(pid,'')})
+    return {'recommendations':out}
