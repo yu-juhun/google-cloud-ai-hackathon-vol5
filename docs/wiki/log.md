@@ -20,3 +20,8 @@
   - Cloud Run 3台体制(frontend / backend-api / agent)。frontendはbackend-apiのみを呼び、
     backend-apiがagent(ADK App)を呼び出してレスポンスを整形する
   - 詳細なインフラ設計は `docs/superpowers/specs/2026-09-12-integration-infra-design.md` に記録
+- 実装着手後、サービス構成を3台体制から5台体制(frontend / backend-api / search-agent /
+  judge-agent / recommend-agent)へ変更。`concepts/service-topology.md`を更新し、
+  `docs/superpowers/specs/2026-09-12-integration-infra-design.md`も合わせて修正:
+  - 検索/判定/推薦をそれぞれ独立したCloud Runサービスに分離(個人GCPプロジェクトでの検証しやすさが理由)
+  - オーケストレーションはbackend-apiが担う(専用orchestratorサービスは追加しない)

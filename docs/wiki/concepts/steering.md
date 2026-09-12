@@ -43,6 +43,11 @@ User -> [Web UI] -> [Orchestrator / ADK Multi-Agent]
                         - 推薦エージェント: スコア + 希望条件を突き合わせ、理由付きで推薦
 ```
 
+上図は論理的な処理フローを示す(この関係は変わらない)。実際のデプロイ単位(何台のCloud Run
+サービスに分けるか、オーケストレーションをどこが担うか)は
+[`docs/wiki/concepts/service-topology.md`](./service-topology.md) を正本とする — 頻繁に変わりうる
+実装判断のため、この方針ページでは重複して記述しない。
+
 キックオフ会議で確定した実装方針[^kickoff-board]:
 
 - 実装優先順位は **検索エージェント → 判定エージェント → 推薦エージェント** の順
@@ -90,10 +95,10 @@ Google Cloud Japan AI Hackathon vol.5[^zenn-hackathon-page]
 
 4人チーム[^kickoff-brainstorm]。キックオフ会議で担当者名まで確定した[^kickoff-board]:
 
-| 担当 | 役割 | 主な作業ディレクトリ(実装フェーズで作成) |
+| 担当 | 役割 | 主な作業ディレクトリ |
 |---|---|---|
-| 劉さん(クラウドエンジニア) | GCPインフラ全体(Cloud Run, IAM, デプロイ)、ADK基盤構築、3エージェントのオーケストレーション設計 | `agents/orchestrator/` |
-| 中村さん(バックエンドエンジニア) | 検索/判定/推薦エージェントのロジック実装、Places API連携 | `agents/search/`, `agents/judge/`, `agents/recommend/` |
+| 劉さん(クラウドエンジニア) | GCPインフラ全体(Cloud Run, IAM, デプロイ)、ADK基盤構築、オーケストレーション設計 | インフラ一式(`*/deployment/terraform/`) |
+| 中村さん(バックエンドエンジニア) | 検索/判定/推薦エージェント + backend-apiのロジック実装、Places API連携 | 正確なディレクトリ名は[`service-topology.md`](./service-topology.md)参照 |
 | 松野さん(学生) | フロントエンド(Web UI)、デモ用データ・シナリオ作成 | `frontend/` |
 | 白井さん(非エンジニア) | 審査基準に沿ったプロジェクト説明・アーキテクチャ図・デモ動画・提出物まとめ、UXレビュー | `docs/submission/` |
 
