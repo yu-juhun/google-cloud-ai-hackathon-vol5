@@ -1,5 +1,6 @@
 """Gemini-backed accessibility judgement service."""
 import json
+import os
 from fastapi import FastAPI
 from google import genai
 from google.genai import types
@@ -10,7 +11,7 @@ class Request(BaseModel):
     candidates: list[dict]
 @app.post('/execute')
 def execute(request: Request):
-    client = genai.Client(vertexai=True, project='storied-shelter-471306-a3', location='global')
+    client = genai.Client(vertexai=True, project=os.environ['VERTEX_PROJECT_ID'], location=os.environ.get('VERTEX_LOCATION', 'global'))
     assessments = []
     for c in request.candidates:
         prompt = f"車椅子横幅{request.wheelchair_width_cm}cmで利用可否を、証拠だけで判定。JSONのみでstatus(accessible|uncertain|not_accessible),confidence(high|medium|low),evidence(日本語)を返す。証拠:{json.dumps({'reviews':c.get('reviews', []),'photo_count':c.get('photo_count',0),'accessibility_options':c.get('accessibility_options',{})}, ensure_ascii=False)}"
