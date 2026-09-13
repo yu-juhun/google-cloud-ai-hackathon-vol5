@@ -1,0 +1,8 @@
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+
+# Python
+__pycache__/
+*.pyc

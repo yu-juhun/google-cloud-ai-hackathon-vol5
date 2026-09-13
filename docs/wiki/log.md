@@ -28,3 +28,16 @@
 - フロントエンドはモック先行で開発し、環境変数で実APIへ切り替える方針を採用:
   - React + TypeScript + Viteで、条件入力・判定根拠・○△×・簡易地図を実装
   - モックとHTTPクライアントで `api/openapi.yaml` と同じ入出力型を共有
+- 5サービス(frontend / backend-api / search-agent / judge-agent / recommend-agent)を
+  共有プロジェクト`project-3bcd6d36-2338-4b32-848`へ初回デプロイ。詳細は`concepts/deployed-endpoints.md`:
+  - Places API実データ + Gemini判定によるエンドツーエンド動作を確認(福岡市中央区で5店舗推薦)
+  - デプロイ過程で発見・修正: Cloud Build SAの権限不足、Terraformの`ingress`属性を明示指定しないと
+    既存値がリセットされない問題、`INGRESS_TRAFFIC_INTERNAL_ONLY`がCloud Run間通信をGFEレベルで
+    拒否する問題、frontendビルドコンテキストが`../api/openapi.yaml`参照に対応していない問題、
+    `aiplatform.googleapis.com`未有効化、frontendのメモリ制限不足
+  - judge-agent/recommend-agentにハードコードされていた個人GCPプロジェクトIDは別PRで修正済み(#14)
+  - `PLACES_API_KEY`(Secret Manager)、Google Maps用ブラウザキーを新規作成して配線
+- 継続コストを避けるため、デプロイ確認後にCloud Run 5サービス、Artifact Registryリポジトリ、
+  Secret Manager `places-api-key`、APIキー2つを全て削除(`terraform destroy` + `gcloud`)。
+  Terraform state用GCSバケットとコード・Terraform定義は再デプロイのため残す。
+  詳細は`concepts/deployed-endpoints.md`
