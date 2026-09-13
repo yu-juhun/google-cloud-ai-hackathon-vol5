@@ -86,19 +86,30 @@ class LiveConversation:
         )
 
     async def receive_audio_chunks(self):
-        """Async generator yielding (audio_bytes | None, transcript_text | None) pairs."""
-        async for message in self._session.receive():
-            audio_bytes = None
-            transcript_text = None
-            if message.data:
-                audio_bytes = message.data
-            if message.server_content and message.server_content.output_transcription:
-                transcript_text = message.server_content.output_transcription.text
-                self._transcript_parts.append(f"モデル: {transcript_text}")
-            if message.server_content and message.server_content.input_transcription:
-                user_text = message.server_content.input_transcription.text
-                self._transcript_parts.append(f"ユーザー: {user_text}")
-            yield audio_bytes, transcript_text
+        """Async generator yielding (audio_bytes | None, transcript_text | None) pairs.
+
+        `session.receive()` itself only covers ONE model turn — its
+        underlying implementation breaks out of its loop as soon as it sees
+        a turn-complete message (confirmed by reading
+        google/genai/live.py's AsyncSession.receive source). A real
+        multi-turn conversation needs a new receive() call per turn, so this
+        wraps it in an outer loop that keeps calling receive() again for
+        each subsequent turn until the caller cancels this generator
+        (main.py cancels the task that drives this when `finish` arrives).
+        """
+        while True:
+            async for message in self._session.receive():
+                audio_bytes = None
+                transcript_text = None
+                if message.data:
+                    audio_bytes = message.data
+                if message.server_content and message.server_content.output_transcription:
+                    transcript_text = message.server_content.output_transcription.text
+                    self._transcript_parts.append(f"モデル: {transcript_text}")
+                if message.server_content and message.server_content.input_transcription:
+                    user_text = message.server_content.input_transcription.text
+                    self._transcript_parts.append(f"ユーザー: {user_text}")
+                yield audio_bytes, transcript_text
 
     async def close(self) -> None:
         """Closes the underlying Live API session without running extraction.
