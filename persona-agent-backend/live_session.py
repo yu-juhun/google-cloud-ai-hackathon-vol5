@@ -1,51 +1,51 @@
 # persona-agent-backend/live_session.py
 """
-SDK verification (google-genai==1.5.0), recorded 2026-09-13:
-- client.aio.live.connect(model=..., config=...) is an async context manager
-  yielding a `google.genai.live.AsyncSession` object. Confirmed via
-  `help(client.aio.live.connect)` and by reading
-  google/genai/live.py in the installed package.
+SDK verification, updated 2026-09-13 during Task 6 Step 7 human smoke test.
 
-- Session send method:
-  `async def send(self, *, input=None, end_of_turn=False)`
-  There is NO `send_realtime_input` method on AsyncSession in this version.
-  `input` accepts a ContentListUnion/dict, a LiveClientContentOrDict,
-  a LiveClientRealtimeInputOrDict, a LiveClientToolResponseOrDict, or a
-  FunctionResponseOrDict/Sequence thereof. For streaming raw audio chunks,
-  the pattern used internally (see `_send_loop`) is:
-      await session.send(input={'data': audio_bytes, 'mimeType': 'audio/pcm'})
-  There is also a higher-level `async def start_stream(self, *, stream:
-  AsyncIterator[bytes], mime_type: str) -> AsyncIterator[LiveServerMessage]`
-  that spawns its own send/receive loop over an async byte-chunk generator
-  and yields server messages directly (an alternative to calling
-  send()/receive() manually).
+Original Task 5 verification was done against google-genai==1.5.0, which
+predates several Live API features this design needs. Running the real
+end-to-end smoke test surfaced three real defects, all fixed here and in
+main.py/requirements.txt:
 
-- Session receive method:
-  `async def receive(self) -> AsyncIterator[types.LiveServerMessage]`
-  (matches the design's `.receive()` assumption exactly). It is an async
-  generator yielding `LiveServerMessage` objects, one per server message,
-  and stops (after yielding the final one) once
-  `result.server_content.turn_complete` is true. Each `LiveServerMessage`
-  exposes both `.data` (convenience accessor for raw audio bytes, if the
-  message contains inline audio) and `.text` (convenience accessor for any
-  text/transcript content), plus the full `.server_content` structure — so
-  a single receive() message can carry audio, text, or both depending on
-  what the model sent for that turn.
+1. **google-genai was too old.** 1.5.0 has no
+   `input_audio_transcription`/`output_audio_transcription` fields on
+   `LiveConnectConfig` at all (`extra_forbidden` validation error) — the
+   transcription feature this design depends on didn't exist yet. Upgraded
+   to google-genai==2.23.0 (latest at the time), which has both fields.
 
-- How to end a session:
-  AsyncSession has an explicit `async def close(self)` method, which closes
-  the underlying websocket (`await self._ws.close()`). Exiting the
-  `async with client.aio.live.connect(...) as session:` block also closes
-  the session (the context manager's __aexit__ calls close()), so relying on
-  the `async with` block is sufficient — no separate explicit close() call
-  is required unless the session is kept open outside a `with` block.
+2. **Model name was wrong.** `gemini-2.5-flash-native-audio-preview` does
+   not exist as a Vertex AI publisher model. Verified the real available
+   model via `client.models.list()`: `gemini-live-2.5-flash-native-audio`.
 
-Design-spec comparison:
-- `.receive()` matches exactly.
-- `send_realtime_input` does NOT exist on the installed AsyncSession; the
-  real method is `send(input=..., end_of_turn=...)`. Task 6 was written
-  against `send()`, not `send_realtime_input()`, per this recorded
-  discrepancy.
+3. **`send()` is deprecated and doesn't reach the VAD audio pipeline.**
+   In google-genai==2.23.0, `AsyncSession.send()` still exists but is
+   deprecated, and — confirmed empirically — sending raw audio through it
+   never triggers a model response (no messages ever come back from
+   `receive()`), because it goes through the generic client-content path,
+   not the realtime-audio/VAD path. The current, working method is:
+       await session.send_realtime_input(audio=types.Blob(data=chunk, mime_type="audio/pcm;rate=16000"))
+   Verified working end-to-end with a text-turn probe (`send_client_content`)
+   that produced a full response strea	m with `output_transcription` chunks
+   and a final `turn_complete=True` message — confirming `receive()`'s
+   shape and lifecycle exactly as this file already assumed.
+
+Also confirmed via manual probing (region matters for this model):
+`location="global"` returns "Publisher model ... not found" for this model;
+`location="us-central1"` connects successfully. main.py's default
+VERTEX_LOCATION was changed from "global" to "us-central1" accordingly.
+
+Everything else from the original verification still holds on 2.23.0:
+- `client.aio.live.connect(model=..., config=...)` is an async context
+  manager yielding an `AsyncSession`.
+- `async def receive(self) -> AsyncIterator[types.LiveServerMessage]` is
+  an async generator, one message per server event, ending after a message
+  with `server_content.turn_complete=True`.
+- Exiting the `async with ...connect(...) as session:` block closes the
+  session; no separate explicit `close()` call is required.
+
+Not yet verified end-to-end with real streamed microphone audio (only with
+a synthetic tone, which the server-side VAD never recognized as speech, and
+with a text-turn probe) — that verification is the human smoke test itself.
 """
 from google.genai import types
 
@@ -70,7 +70,7 @@ class LiveConversation:
 
     async def start(self) -> None:
         self._session_ctx = self.genai_client.aio.live.connect(
-            model="gemini-2.5-flash-native-audio-preview",
+            model="gemini-live-2.5-flash-native-audio",
             config=types.LiveConnectConfig(
                 response_modalities=["AUDIO"],
                 system_instruction=SYSTEM_PROMPT,
@@ -81,9 +81,8 @@ class LiveConversation:
         self._session = await self._session_ctx.__aenter__()
 
     async def send_audio(self, chunk: bytes) -> None:
-        await self._session.send(
-            input={"data": chunk, "mimeType": "audio/pcm;rate=16000"},
-            end_of_turn=False,
+        await self._session.send_realtime_input(
+            audio=types.Blob(data=chunk, mime_type="audio/pcm;rate=16000"),
         )
 
     async def receive_audio_chunks(self):
