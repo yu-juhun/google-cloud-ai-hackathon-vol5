@@ -100,9 +100,19 @@ class LiveConversation:
                 self._transcript_parts.append(f"ユーザー: {user_text}")
             yield audio_bytes, transcript_text
 
-    async def finish(self) -> Persona:
+    async def close(self) -> None:
+        """Closes the underlying Live API session without running extraction.
+
+        Used when the client disconnects (e.g. a page reload) without ever
+        sending `finish` — without this, the Live API session is left open
+        on the server indefinitely.
+        """
         if self._session_ctx is not None:
             await self._session_ctx.__aexit__(None, None, None)
+            self._session_ctx = None
+
+    async def finish(self) -> Persona:
+        await self.close()
         transcript = "\n".join(self._transcript_parts)
         persona = extract_persona(transcript=transcript, genai_client=self.genai_client)
         return infer_keywords(persona, self.genai_client)

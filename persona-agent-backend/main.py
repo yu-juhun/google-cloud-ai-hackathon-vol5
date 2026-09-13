@@ -66,6 +66,7 @@ async def converse(websocket: WebSocket) -> None:
 
     except WebSocketDisconnect:
         relay_task.cancel()
+        await conversation.close()
     finally:
         if not relay_task.done():
             relay_task.cancel()

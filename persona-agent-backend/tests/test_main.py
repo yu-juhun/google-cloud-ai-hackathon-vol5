@@ -55,6 +55,7 @@ def test_websocket_audio_chunk_flow_calls_live_conversation():
         mock_conversation = mock_live_conversation_cls.return_value
         mock_conversation.start = AsyncMock()
         mock_conversation.send_audio = AsyncMock()
+        mock_conversation.close = AsyncMock()
 
         async def fake_receive_audio_chunks():
             yield b"audio-bytes", None
