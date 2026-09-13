@@ -11,8 +11,10 @@ def test_health_endpoint():
     assert response.json() == {"service": "persona-agent-backend", "status": "healthy"}
 
 
-def test_websocket_echoes_text_messages():
-    with client.websocket_connect("/ws/converse") as websocket:
-        websocket.send_json({"type": "ping"})
-        data = websocket.receive_json()
-        assert data == {"type": "echo", "payload": {"type": "ping"}}
+# NOTE: the previous echo-based test_websocket_echoes_text_messages test was
+# removed in Task 6. The /ws/converse handler now wires a real
+# LiveConversation (Gemini Live API session) instead of echoing messages
+# back, so that behavior no longer applies. See tests/test_live_session.py
+# for coverage of LiveConversation itself; the handler's wiring is
+# exercised end-to-end only via the human voice smoke test (brief Step 7),
+# since it requires a live Gemini Live connection.
