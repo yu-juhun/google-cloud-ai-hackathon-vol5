@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, act } from "@testing-library/react";
 import { AvatarPanel } from "./AvatarPanel";
 import { PersonaSocket } from "../ws/PersonaSocket";
 
@@ -26,10 +26,12 @@ describe("AvatarPanel", () => {
     const socket = new PersonaSocket("wss://example.test");
     render(<AvatarPanel socket={socket} />);
 
-    socket.onPersonaResult?.({
-      persona_id: "abc",
-      raw_summary: "テスト要約",
-      attributes: [],
+    act(() => {
+      socket.onPersonaResult?.({
+        persona_id: "abc",
+        raw_summary: "テスト要約",
+        attributes: [],
+      });
     });
 
     expect(screen.getByText("テスト要約")).toBeInTheDocument();
