@@ -19,28 +19,39 @@ export class PersonaSocket {
 
   constructor(private url: string) {}
 
-  connect(): void {
-    this.ws = new WebSocket(this.url);
-    this.ws.onmessage = (event: { data: string }) => {
-      const message = JSON.parse(event.data);
-      if (message.type === "persona_result") {
-        this.onPersonaResult?.(message.data as Persona);
-      } else if (message.type === "audio_chunk") {
-        const binary = atob(message.data as string);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        this.onAudioChunk?.(bytes.buffer);
-      }
-    };
+  /** Resolves once the socket has actually reached OPEN. Callers that need
+   * to start sending immediately after connecting (e.g. mic capture) must
+   * await this — sending while the socket is still CONNECTING throws
+   * InvalidStateError, silently dropping audio chunks sent too early. */
+  connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(this.url);
+      this.ws = ws;
+      ws.onopen = () => resolve();
+      ws.onerror = (event) => reject(event);
+      ws.onmessage = (event: { data: string }) => {
+        const message = JSON.parse(event.data);
+        if (message.type === "persona_result") {
+          this.onPersonaResult?.(message.data as Persona);
+        } else if (message.type === "audio_chunk") {
+          const binary = atob(message.data as string);
+          const bytes = new Uint8Array(binary.length);
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          this.onAudioChunk?.(bytes.buffer);
+        }
+      };
+    });
   }
 
   sendAudioChunk(chunk: ArrayBuffer): void {
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
     const base64 = btoa(String.fromCharCode(...new Uint8Array(chunk)));
-    this.ws?.send(JSON.stringify({ type: "audio_chunk", data: base64 }));
+    this.ws.send(JSON.stringify({ type: "audio_chunk", data: base64 }));
   }
 
   sendFinish(): void {
-    this.ws?.send(JSON.stringify({ type: "finish" }));
+    if (this.ws?.readyState !== WebSocket.OPEN) return;
+    this.ws.send(JSON.stringify({ type: "finish" }));
   }
 
   close(): void {

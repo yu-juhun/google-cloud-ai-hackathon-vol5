@@ -3,6 +3,8 @@ import { PersonaSocket } from "./PersonaSocket";
 
 class FakeWebSocket {
   static instances: FakeWebSocket[] = [];
+  static readonly OPEN = 1;
+  readyState = FakeWebSocket.OPEN;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   sent: string[] = [];

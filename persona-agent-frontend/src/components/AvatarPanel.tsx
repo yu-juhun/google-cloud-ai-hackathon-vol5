@@ -31,7 +31,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   }, [socket]);
 
   const handleStart = async () => {
-    socket.connect();
+    await socket.connect();
     const mic = await startMicCapture(
       (chunk) => socket.sendAudioChunk(chunk),
       () => {},
