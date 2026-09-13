@@ -1,20 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PersonaSocket, Persona } from "../ws/PersonaSocket";
 import { startMicCapture, MicCapture } from "../audio/micCapture";
+import { createAudioPlayback, AudioPlayback } from "../audio/audioPlayback";
 
 export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [mouthOpen, setMouthOpen] = useState(false);
   const [persona, setPersona] = useState<Persona | null>(null);
   const [capture, setCapture] = useState<MicCapture | null>(null);
+  const playbackRef = useRef<AudioPlayback | null>(null);
 
   useEffect(() => {
     socket.onPersonaResult = (result) => setPersona(result);
     socket.onAudioChunk = (chunk) => {
+      if (!playbackRef.current) {
+        playbackRef.current = createAudioPlayback();
+      }
+      playbackRef.current.playChunk(chunk);
+
       const view = new Int16Array(chunk);
       let sumSquares = 0;
       for (let i = 0; i < view.length; i++) sumSquares += (view[i] / 0x7fff) ** 2;
       const volume = Math.sqrt(sumSquares / view.length);
       setMouthOpen(volume > 0.02);
+    };
+
+    return () => {
+      playbackRef.current?.stop();
+      playbackRef.current = null;
     };
   }, [socket]);
 
