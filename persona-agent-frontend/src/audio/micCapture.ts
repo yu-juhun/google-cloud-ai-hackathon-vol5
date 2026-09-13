@@ -4,68 +4,92 @@ export interface MicCapture {
 
 const TARGET_SAMPLE_RATE = 16000;
 
-/** Naive decimation to TARGET_SAMPLE_RATE. The `{ sampleRate: 16000 }`
- * AudioContext constructor option is not honored by every browser — many
- * silently keep the device's native rate (commonly 44100/48000Hz). Sending
- * un-resampled audio mislabeled as 16kHz plays back at the wrong pitch/speed
- * on the server side and produces garbage ASR transcripts, so this always
- * resamples explicitly based on the context's actual reported sampleRate
- * rather than assuming the constructor option took effect. */
-function downsampleTo16k(input: Float32Array, inputSampleRate: number): Float32Array {
-  if (inputSampleRate === TARGET_SAMPLE_RATE) return input;
-  const ratio = inputSampleRate / TARGET_SAMPLE_RATE;
-  const outputLength = Math.round(input.length / ratio);
-  const output = new Float32Array(outputLength);
-  for (let i = 0; i < outputLength; i++) {
-    output[i] = input[Math.floor(i * ratio)];
+/** AudioWorkletProcessor source, adapted from Google's official Live API
+ * web console reference (google-gemini/live-api-web-console,
+ * src/lib/worklets/audio-processing.ts, Apache-2.0). Runs on the dedicated
+ * audio rendering thread rather than the main thread, so it keeps sampling
+ * cleanly even while the main thread is busy (React re-renders, WebSocket
+ * JSON/base64 encoding) — the deprecated ScriptProcessorNode this replaced
+ * ran its callback on the main thread and was suspected of dropping/
+ * corrupting samples under load, which lines up with the "unintelligible
+ * transcript despite normal speech" symptom seen when testing this by
+ * voice. Buffers 2048 int16 samples (~128ms at 16kHz) before flushing. */
+const RECORDER_WORKLET_SOURCE = `
+class PcmRecorderWorklet extends AudioWorkletProcessor {
+  buffer = new Int16Array(2048);
+  bufferWriteIndex = 0;
+
+  process(inputs) {
+    const channel0 = inputs[0] && inputs[0][0];
+    if (channel0) {
+      for (let i = 0; i < channel0.length; i++) {
+        const sample = Math.max(-1, Math.min(1, channel0[i]));
+        this.buffer[this.bufferWriteIndex++] = sample * 0x7fff;
+        if (this.bufferWriteIndex >= this.buffer.length) {
+          this.flush();
+        }
+      }
+    }
+    return true;
   }
-  return output;
+
+  flush() {
+    this.port.postMessage({ pcm16: this.buffer.slice(0, this.bufferWriteIndex).buffer });
+    this.bufferWriteIndex = 0;
+  }
+}
+`;
+
+function createWorkletModuleUrl(workletName: string, processorSource: string): string {
+  const script = new Blob([`registerProcessor("${workletName}", ${processorSource})`], {
+    type: "application/javascript",
+  });
+  return URL.createObjectURL(script);
 }
 
-/** Captures mic audio, calling onChunk with raw PCM16 chunks (always
- * resampled to 16kHz regardless of the device's native rate) and onVolume
- * with a 0-1 volume estimate for each chunk (used to drive the avatar's
- * mouth toggle — see AvatarPanel). */
-export function startMicCapture(
+function rmsVolume(pcm16: ArrayBuffer): number {
+  const view = new Int16Array(pcm16);
+  let sumSquares = 0;
+  for (let i = 0; i < view.length; i++) sumSquares += (view[i] / 0x7fff) ** 2;
+  return view.length > 0 ? Math.sqrt(sumSquares / view.length) : 0;
+}
+
+/** Captures mic audio, calling onChunk with raw PCM16 chunks at 16kHz
+ * (matching the Gemini Live API's required input format) and onVolume with
+ * a 0-1 volume estimate for each chunk (used to drive the avatar's mouth
+ * toggle — see AvatarPanel). */
+export async function startMicCapture(
   onChunk: (chunk: ArrayBuffer) => void,
   onVolume: (level: number) => void,
 ): Promise<MicCapture> {
-  return navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
-    const audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
-    const source = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(4096, 1, 1);
-    // Route through a silent gain node instead of audioContext.destination
-    // directly — connecting the raw mic input to the destination plays it
-    // straight back out the speakers, causing audible feedback/howling.
-    const silentSink = audioContext.createGain();
-    silentSink.gain.value = 0;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const audioContext = new AudioContext({ sampleRate: TARGET_SAMPLE_RATE });
+  const source = audioContext.createMediaStreamSource(stream);
 
-    processor.onaudioprocess = (event) => {
-      const raw = event.inputBuffer.getChannelData(0);
-      const input = downsampleTo16k(raw, audioContext.sampleRate);
-      const pcm16 = new Int16Array(input.length);
-      let sumSquares = 0;
-      for (let i = 0; i < input.length; i++) {
-        const sample = Math.max(-1, Math.min(1, input[i]));
-        pcm16[i] = sample * 0x7fff;
-        sumSquares += sample * sample;
-      }
-      onChunk(pcm16.buffer);
-      onVolume(Math.sqrt(sumSquares / input.length));
-    };
+  const workletName = "pcm-recorder-worklet";
+  const moduleUrl = createWorkletModuleUrl(workletName, RECORDER_WORKLET_SOURCE);
+  await audioContext.audioWorklet.addModule(moduleUrl);
+  const recorderNode = new AudioWorkletNode(audioContext, workletName);
 
-    source.connect(processor);
-    processor.connect(silentSink);
-    silentSink.connect(audioContext.destination);
+  recorderNode.port.onmessage = (event: MessageEvent<{ pcm16: ArrayBuffer }>) => {
+    const chunk = event.data.pcm16;
+    onChunk(chunk);
+    onVolume(rmsVolume(chunk));
+  };
 
-    return {
-      stop: () => {
-        processor.disconnect();
-        source.disconnect();
-        silentSink.disconnect();
-        stream.getTracks().forEach((track) => track.stop());
-        audioContext.close();
-      },
-    };
-  });
+  // AudioWorkletNode does not need to be connected to destination to keep
+  // receiving input — unlike the deprecated ScriptProcessorNode, it is
+  // driven directly by the render graph's active input connection.
+  source.connect(recorderNode);
+
+  return {
+    stop: () => {
+      recorderNode.port.onmessage = null;
+      recorderNode.disconnect();
+      source.disconnect();
+      stream.getTracks().forEach((track) => track.stop());
+      audioContext.close();
+      URL.revokeObjectURL(moduleUrl);
+    },
+  };
 }
