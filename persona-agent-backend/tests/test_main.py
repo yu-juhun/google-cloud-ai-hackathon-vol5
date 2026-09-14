@@ -108,3 +108,32 @@ def test_websocket_avatar_photo_flow_calls_set_base_photo_and_relays_result():
             "data": base64.b64encode(b"base-avatar-bytes").decode("ascii"),
         }
         mock_conversation.set_base_photo.assert_called_once_with(photo_bytes=b"photo-bytes", content_type="image/png")
+
+
+def test_websocket_avatar_photo_flow_survives_youcam_failure():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+        mock_conversation.set_base_photo = MagicMock(side_effect=RuntimeError("no face detected"))
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="要約", attributes=[]), None)
+        )
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover - makes this an async generator with no items
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json(
+                {"type": "avatar_photo", "data": base64.b64encode(b"photo-bytes").decode("ascii"), "content_type": "image/png"}
+            )
+            error_data = websocket.receive_json()
+            websocket.send_json({"type": "finish"})
+            finish_data = websocket.receive_json()
+
+        assert error_data == {"type": "avatar_error", "message": "no face detected"}
+        assert finish_data["type"] == "persona_result"
+        mock_conversation.set_base_photo.assert_called_once()

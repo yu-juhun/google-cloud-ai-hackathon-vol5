@@ -47,6 +47,8 @@ Not yet verified end-to-end with real streamed microphone audio (only with
 a synthetic tone, which the server-side VAD never recognized as speech, and
 with a text-turn probe) — that verification is the human smoke test itself.
 """
+import asyncio
+
 from google.genai import types
 
 from avatar_generation import evolve_avatar
@@ -70,6 +72,7 @@ class LiveConversation:
         self._session_ctx = None
         self._transcript_parts: list[str] = []
         self._base_avatar_image: bytes | None = None
+        self._base_avatar_content_type: str | None = None
 
     async def start(self) -> None:
         self._session_ctx = self.genai_client.aio.live.connect(
@@ -118,8 +121,10 @@ class LiveConversation:
         """Runs the user's uploaded photo through YouCam once to produce a
         personalized base avatar, stores it for the finish()-time Nano
         Banana edit, and returns it so the caller can show it immediately."""
-        self._base_avatar_image = generate_base_avatar(photo_bytes=photo_bytes, content_type=content_type)
-        return self._base_avatar_image
+        image_bytes, image_content_type = generate_base_avatar(photo_bytes=photo_bytes, content_type=content_type)
+        self._base_avatar_image = image_bytes
+        self._base_avatar_content_type = image_content_type
+        return image_bytes
 
     async def close(self) -> None:
         """Closes the underlying Live API session without running extraction.
@@ -140,10 +145,16 @@ class LiveConversation:
 
         avatar_image = None
         if self._base_avatar_image is not None:
-            avatar_image = evolve_avatar(
+            # evolve_avatar calls Gemini synchronously and can block for
+            # seconds; run it in a worker thread so it doesn't freeze the
+            # event loop that this same websocket connection's relay_task
+            # depends on.
+            avatar_image = await asyncio.to_thread(
+                evolve_avatar,
                 base_image_bytes=self._base_avatar_image,
                 persona=persona,
                 genai_client=self.genai_client,
+                mime_type=self._base_avatar_content_type or "image/jpeg",
             )
 
         return persona, avatar_image

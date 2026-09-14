@@ -86,6 +86,17 @@ describe("PersonaSocket", () => {
 
     expect(onAvatarBaseImage).toHaveBeenCalledWith("base64imagedata");
   });
+
+  it("does not open a second WebSocket when already connected", async () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    const firstConnect = socket.connect();
+    FakeWebSocket.instances[0].onopen?.();
+    await firstConnect;
+
+    await socket.connect();
+
+    expect(FakeWebSocket.instances.length).toBe(1);
+  });
 });
 
 function assert_audio_chunk_message(sent: unknown) {

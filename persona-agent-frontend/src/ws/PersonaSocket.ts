@@ -27,6 +27,7 @@ export class PersonaSocket {
    * await this — sending while the socket is still CONNECTING throws
    * InvalidStateError, silently dropping audio chunks sent too early. */
   connect(): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.ws = ws;

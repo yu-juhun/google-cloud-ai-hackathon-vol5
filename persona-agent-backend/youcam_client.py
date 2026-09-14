@@ -46,9 +46,11 @@ def generate_base_avatar(
     photo_bytes: bytes,
     content_type: str,
     template_id: str = "female_manga_mood",
-) -> bytes:
+) -> tuple[bytes, str]:
     """Runs the full YouCam AI Avatar Generator flow synchronously and
-    returns the generated avatar image bytes. Raises requests.HTTPError or
+    returns the generated avatar image bytes together with the actual
+    Content-Type YouCam served them as (it serves JPEG, not PNG, despite
+    the request photo possibly being PNG). Raises requests.HTTPError or
     RuntimeError (on task failure/timeout) rather than returning a
     sentinel — callers decide how to fall back."""
     token = _get_access_token()
@@ -93,7 +95,8 @@ def generate_base_avatar(
             result_url = poll_data["results"]["output"][0]["url"]
             image_resp = requests.get(result_url, timeout=30)
             image_resp.raise_for_status()
-            return image_resp.content
+            content_type = image_resp.headers.get("Content-Type", "image/jpeg")
+            return image_resp.content, content_type
         if status == "error":
             raise RuntimeError(f"YouCam ai-avatar task {task_id} failed: {poll_data}")
 

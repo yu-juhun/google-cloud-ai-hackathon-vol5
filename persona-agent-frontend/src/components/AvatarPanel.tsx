@@ -50,10 +50,15 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     const file = event.target.files?.[0];
     if (!file) return;
     const buffer = await file.arrayBuffer();
+    await socket.connect();
     socket.sendAvatarPhoto(buffer, file.type);
   };
 
-  const baseSrc = baseAvatarImage ? `data:image/png;base64,${baseAvatarImage}` : "/avatar-mouth-closed.svg";
+  const baseSrc = persona?.avatar_image
+    ? `data:image/png;base64,${persona.avatar_image}`
+    : baseAvatarImage
+      ? `data:image/png;base64,${baseAvatarImage}`
+      : "/avatar-mouth-closed.svg";
 
   return (
     <div>

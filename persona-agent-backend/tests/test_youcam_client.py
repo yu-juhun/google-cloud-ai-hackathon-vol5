@@ -1,7 +1,11 @@
 # persona-agent-backend/tests/test_youcam_client.py
+import base64
 from unittest.mock import MagicMock, patch
 
-from youcam_client import generate_base_avatar
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
+from youcam_client import _get_access_token, generate_base_avatar
 
 
 @patch("youcam_client._get_access_token", return_value="fake-token")
@@ -36,11 +40,41 @@ def test_generate_base_avatar_full_flow(mock_post, mock_request, mock_get, _mock
     }
     download_resp = MagicMock()
     download_resp.content = b"fake-image-bytes"
+    download_resp.headers = {"Content-Type": "image/jpeg"}
     mock_get.side_effect = [poll_resp, download_resp]
 
     result = generate_base_avatar(photo_bytes=b"fake-photo-bytes", content_type="image/png")
 
-    assert result == b"fake-image-bytes"
+    assert result == (b"fake-image-bytes", "image/jpeg")
     mock_request.assert_called_once_with(
         "PUT", "https://upload.example/x", headers={"Content-Type": "image/png"}, data=b"fake-photo-bytes", timeout=30
     )
+
+
+def test_get_access_token_encrypts_payload_and_parses_result_envelope(monkeypatch):
+    """Exercises _get_access_token directly with a real throwaway RSA
+    keypair, so the actual RSA-encryption/id_token-construction code path
+    runs (not just a @patch-ed-out stub), and covers the /client/auth
+    endpoint's anomalous ["result"] response envelope (every other YouCam
+    endpoint uses ["data"])."""
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    public_key_der = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.DER,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    public_key_b64 = base64.b64encode(public_key_der).decode()
+
+    monkeypatch.setenv("PERFECTCORP_API_KEY", "fake-client-id")
+    monkeypatch.setenv("PERFECTCORP_API_SECRET", public_key_b64)
+
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = {"status": 200, "result": {"access_token": "fake-token"}}
+
+    with patch("youcam_client.requests.post", return_value=fake_resp) as mock_post:
+        token = _get_access_token()
+
+    assert token == "fake-token"
+    body = mock_post.call_args.kwargs["json"]
+    assert body["client_id"] == "fake-client-id"
+    assert isinstance(body["id_token"], str)
+    assert len(body["id_token"]) > 0

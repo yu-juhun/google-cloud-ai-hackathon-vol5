@@ -28,13 +28,18 @@ async def test_finish_runs_extraction_then_keyword_inference():
 def test_set_base_photo_calls_youcam_and_stores_result(monkeypatch):
     import live_session
 
-    monkeypatch.setattr(live_session, "generate_base_avatar", lambda photo_bytes, content_type: b"youcam-avatar-bytes")
+    monkeypatch.setattr(
+        live_session,
+        "generate_base_avatar",
+        lambda photo_bytes, content_type: (b"youcam-avatar-bytes", "image/jpeg"),
+    )
 
     conversation = live_session.LiveConversation(genai_client=MagicMock())
     result = conversation.set_base_photo(photo_bytes=b"raw-photo", content_type="image/png")
 
     assert result == b"youcam-avatar-bytes"
     assert conversation._base_avatar_image == b"youcam-avatar-bytes"
+    assert conversation._base_avatar_content_type == "image/jpeg"
 
 
 @pytest.mark.asyncio
@@ -44,11 +49,16 @@ async def test_finish_returns_persona_and_evolved_avatar(monkeypatch):
     fake_persona = Persona(persona_id="id", raw_summary="s", attributes=[])
     monkeypatch.setattr(live_session, "extract_persona", lambda transcript, genai_client: fake_persona)
     monkeypatch.setattr(live_session, "infer_keywords", lambda persona, genai_client: persona)
-    monkeypatch.setattr(live_session, "evolve_avatar", lambda base_image_bytes, persona, genai_client: b"evolved-bytes")
+    monkeypatch.setattr(
+        live_session,
+        "evolve_avatar",
+        lambda base_image_bytes, persona, genai_client, mime_type: b"evolved-bytes",
+    )
 
     conversation = live_session.LiveConversation(genai_client=MagicMock())
     conversation._session_ctx = None
     conversation._base_avatar_image = b"base-bytes"
+    conversation._base_avatar_content_type = "image/jpeg"
 
     persona, avatar_bytes = await conversation.finish()
 

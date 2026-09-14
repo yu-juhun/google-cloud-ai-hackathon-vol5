@@ -57,10 +57,24 @@ async def converse(websocket: WebSocket) -> None:
             elif message.get("type") == "avatar_photo":
                 photo_bytes = base64.b64decode(message["data"])
                 content_type = message.get("content_type", "image/png")
-                base_image = conversation.set_base_photo(photo_bytes=photo_bytes, content_type=content_type)
-                await websocket.send_json(
-                    {"type": "avatar_base_image", "data": base64.b64encode(base_image).decode("ascii")}
-                )
+                try:
+                    # set_base_photo calls YouCam synchronously (it can
+                    # block for up to ~120s), so run it in a worker thread
+                    # rather than blocking the event loop that this same
+                    # connection's relay_task needs to keep relaying audio.
+                    base_image = await asyncio.to_thread(
+                        conversation.set_base_photo, photo_bytes=photo_bytes, content_type=content_type
+                    )
+                except Exception as e:
+                    # A YouCam failure (bad credentials, no face detected,
+                    # network error, poll timeout) must not kill the whole
+                    # voice conversation — leave _base_avatar_image unset so
+                    # finish() falls back to its no-photo behavior.
+                    await websocket.send_json({"type": "avatar_error", "message": str(e)})
+                else:
+                    await websocket.send_json(
+                        {"type": "avatar_base_image", "data": base64.b64encode(base_image).decode("ascii")}
+                    )
 
             elif message.get("type") == "finish":
                 relay_task.cancel()

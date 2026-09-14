@@ -10,7 +10,7 @@ EDIT_PROMPT_TEMPLATE = """\
 """
 
 
-def evolve_avatar(base_image_bytes: bytes, persona: Persona, genai_client) -> bytes:
+def evolve_avatar(base_image_bytes: bytes, persona: Persona, genai_client, mime_type: str = "image/jpeg") -> bytes:
     """Edits the base avatar image to reflect the persona's attributes,
     preserving character identity (see the v2 design spec's verified
     Nano Banana consistency behavior). Returns the base image unchanged
@@ -24,7 +24,7 @@ def evolve_avatar(base_image_bytes: bytes, persona: Persona, genai_client) -> by
     response = genai_client.models.generate_content(
         model="gemini-2.5-flash-image",
         contents=[
-            types.Part.from_bytes(data=base_image_bytes, mime_type="image/png"),
+            types.Part.from_bytes(data=base_image_bytes, mime_type=mime_type),
             prompt,
         ],
     )
