@@ -8,11 +8,15 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [persona, setPersona] = useState<Persona | null>(null);
   const [capture, setCapture] = useState<MicCapture | null>(null);
   const [baseAvatarImage, setBaseAvatarImage] = useState<string | null>(null);
+  const [baseAvatarImageOpen, setBaseAvatarImageOpen] = useState<string | null>(null);
   const playbackRef = useRef<AudioPlayback | null>(null);
 
   useEffect(() => {
     socket.onPersonaResult = (result) => setPersona(result);
-    socket.onAvatarBaseImage = (imageBase64) => setBaseAvatarImage(imageBase64);
+    socket.onAvatarBaseImage = (imageBase64, openMouthImageBase64) => {
+      setBaseAvatarImage(imageBase64);
+      setBaseAvatarImageOpen(openMouthImageBase64);
+    };
     socket.onAudioChunk = (chunk) => {
       if (!playbackRef.current) {
         playbackRef.current = createAudioPlayback();
@@ -54,11 +58,17 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     socket.sendAvatarPhoto(buffer, file.type);
   };
 
-  const baseSrc = persona?.avatar_image
+  const closedSrc = persona?.avatar_image
     ? `data:image/png;base64,${persona.avatar_image}`
     : baseAvatarImage
       ? `data:image/png;base64,${baseAvatarImage}`
       : "/avatar-mouth-closed.svg";
+
+  const openSrc = persona?.avatar_image_open
+    ? `data:image/png;base64,${persona.avatar_image_open}`
+    : baseAvatarImageOpen
+      ? `data:image/png;base64,${baseAvatarImageOpen}`
+      : "/avatar-mouth-open.svg";
 
   return (
     <div>
@@ -66,7 +76,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
         顔写真をアップロード
         <input type="file" accept="image/*" onChange={handlePhotoChange} />
       </label>
-      <img src={mouthOpen ? "/avatar-mouth-open.svg" : baseSrc} alt="アバター" width={200} height={200} />
+      <img src={mouthOpen ? openSrc : closedSrc} alt="アバター" width={200} height={200} />
       <button onClick={handleStart}>話しかける</button>
       <button onClick={handleFinish}>完了</button>
       {persona && (

@@ -55,11 +55,17 @@ describe("PersonaSocket", () => {
     ws.onmessage?.({
       data: JSON.stringify({
         type: "persona_result",
-        data: { persona_id: "abc", raw_summary: "", attributes: [], avatar_image: null },
+        data: { persona_id: "abc", raw_summary: "", attributes: [], avatar_image: null, avatar_image_open: null },
       }),
     });
 
-    expect(onResult).toHaveBeenCalledWith({ persona_id: "abc", raw_summary: "", attributes: [], avatar_image: null });
+    expect(onResult).toHaveBeenCalledWith({
+      persona_id: "abc",
+      raw_summary: "",
+      attributes: [],
+      avatar_image: null,
+      avatar_image_open: null,
+    });
   });
 
   it("sends a base64 avatar_photo message with content_type", () => {
@@ -82,9 +88,11 @@ describe("PersonaSocket", () => {
     socket.connect();
 
     const ws = FakeWebSocket.instances[0];
-    ws.onmessage?.({ data: JSON.stringify({ type: "avatar_base_image", data: "base64imagedata" }) });
+    ws.onmessage?.({
+      data: JSON.stringify({ type: "avatar_base_image", data: "base64imagedata", open_mouth_data: "openbase64" }),
+    });
 
-    expect(onAvatarBaseImage).toHaveBeenCalledWith("base64imagedata");
+    expect(onAvatarBaseImage).toHaveBeenCalledWith("base64imagedata", "openbase64");
   });
 
   it("does not open a second WebSocket when already connected", async () => {

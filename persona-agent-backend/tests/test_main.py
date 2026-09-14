@@ -32,7 +32,11 @@ def test_websocket_finish_flow_calls_live_conversation():
         mock_conversation = mock_live_conversation_cls.return_value
         mock_conversation.start = AsyncMock()
         mock_conversation.finish = AsyncMock(
-            return_value=(Persona(persona_id="test-id", raw_summary="要約", attributes=[]), b"avatar-bytes")
+            return_value=(
+                Persona(persona_id="test-id", raw_summary="要約", attributes=[]),
+                b"avatar-bytes",
+                b"avatar-bytes-open",
+            )
         )
 
         with client.websocket_connect("/ws/converse") as websocket:
@@ -46,6 +50,7 @@ def test_websocket_finish_flow_calls_live_conversation():
                 "raw_summary": "要約",
                 "attributes": [],
                 "avatar_image": base64.b64encode(b"avatar-bytes").decode("ascii"),
+                "avatar_image_open": base64.b64encode(b"avatar-bytes-open").decode("ascii"),
             },
         }
         mock_conversation.start.assert_called_once()
@@ -85,9 +90,9 @@ def test_websocket_avatar_photo_flow_calls_set_base_photo_and_relays_result():
         mock_conversation = mock_live_conversation_cls.return_value
         mock_conversation.start = AsyncMock()
         mock_conversation.close = AsyncMock()
-        mock_conversation.set_base_photo = MagicMock(return_value=b"base-avatar-bytes")
+        mock_conversation.set_base_photo = MagicMock(return_value=(b"base-avatar-bytes", b"base-avatar-bytes-open"))
         mock_conversation.finish = AsyncMock(
-            return_value=(Persona(persona_id="test-id", raw_summary="要約", attributes=[]), None)
+            return_value=(Persona(persona_id="test-id", raw_summary="要約", attributes=[]), None, None)
         )
 
         async def fake_receive_audio_chunks():
@@ -106,6 +111,7 @@ def test_websocket_avatar_photo_flow_calls_set_base_photo_and_relays_result():
         assert data == {
             "type": "avatar_base_image",
             "data": base64.b64encode(b"base-avatar-bytes").decode("ascii"),
+            "open_mouth_data": base64.b64encode(b"base-avatar-bytes-open").decode("ascii"),
         }
         mock_conversation.set_base_photo.assert_called_once_with(photo_bytes=b"photo-bytes", content_type="image/png")
 
@@ -117,7 +123,7 @@ def test_websocket_avatar_photo_flow_survives_youcam_failure():
         mock_conversation.close = AsyncMock()
         mock_conversation.set_base_photo = MagicMock(side_effect=RuntimeError("no face detected"))
         mock_conversation.finish = AsyncMock(
-            return_value=(Persona(persona_id="test-id", raw_summary="要約", attributes=[]), None)
+            return_value=(Persona(persona_id="test-id", raw_summary="要約", attributes=[]), None, None)
         )
 
         async def fake_receive_audio_chunks():

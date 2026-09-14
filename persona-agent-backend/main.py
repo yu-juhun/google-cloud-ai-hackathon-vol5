@@ -62,7 +62,7 @@ async def converse(websocket: WebSocket) -> None:
                     # block for up to ~120s), so run it in a worker thread
                     # rather than blocking the event loop that this same
                     # connection's relay_task needs to keep relaying audio.
-                    base_image = await asyncio.to_thread(
+                    base_image, base_image_open = await asyncio.to_thread(
                         conversation.set_base_photo, photo_bytes=photo_bytes, content_type=content_type
                     )
                 except Exception as e:
@@ -73,7 +73,11 @@ async def converse(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "avatar_error", "message": str(e)})
                 else:
                     await websocket.send_json(
-                        {"type": "avatar_base_image", "data": base64.b64encode(base_image).decode("ascii")}
+                        {
+                            "type": "avatar_base_image",
+                            "data": base64.b64encode(base_image).decode("ascii"),
+                            "open_mouth_data": base64.b64encode(base_image_open).decode("ascii"),
+                        }
                     )
 
             elif message.get("type") == "finish":
@@ -82,10 +86,13 @@ async def converse(websocket: WebSocket) -> None:
                     await relay_task
                 except asyncio.CancelledError:
                     pass
-                persona, avatar_image = await conversation.finish()
+                persona, avatar_image, avatar_image_open = await conversation.finish()
                 persona_data = persona.model_dump()
                 persona_data["avatar_image"] = (
                     base64.b64encode(avatar_image).decode("ascii") if avatar_image is not None else None
+                )
+                persona_data["avatar_image_open"] = (
+                    base64.b64encode(avatar_image_open).decode("ascii") if avatar_image_open is not None else None
                 )
                 await websocket.send_json({"type": "persona_result", "data": persona_data})
                 break

@@ -51,7 +51,7 @@ import asyncio
 
 from google.genai import types
 
-from avatar_generation import evolve_avatar
+from avatar_generation import evolve_avatar, generate_open_mouth_variant
 from keyword_inference import infer_keywords
 from persona_extraction import extract_persona
 from schemas import Persona
@@ -72,6 +72,7 @@ class LiveConversation:
         self._session_ctx = None
         self._transcript_parts: list[str] = []
         self._base_avatar_image: bytes | None = None
+        self._base_avatar_image_open: bytes | None = None
         self._base_avatar_content_type: str | None = None
 
     async def start(self) -> None:
@@ -117,14 +118,21 @@ class LiveConversation:
                     self._transcript_parts.append(f"ユーザー: {user_text}")
                 yield audio_bytes, transcript_text
 
-    def set_base_photo(self, photo_bytes: bytes, content_type: str) -> bytes:
+    def set_base_photo(self, photo_bytes: bytes, content_type: str) -> tuple[bytes, bytes]:
         """Runs the user's uploaded photo through YouCam once to produce a
-        personalized base avatar, stores it for the finish()-time Nano
-        Banana edit, and returns it so the caller can show it immediately."""
+        personalized base avatar, then generates a mouth-open variant of
+        that SAME character so the frontend's talking animation doesn't
+        fall back to a generic stock image. Stores both for the
+        finish()-time Nano Banana edit and returns both so the caller can
+        show them immediately."""
         image_bytes, image_content_type = generate_base_avatar(photo_bytes=photo_bytes, content_type=content_type)
+        open_mouth_bytes = generate_open_mouth_variant(
+            base_image_bytes=image_bytes, genai_client=self.genai_client, mime_type=image_content_type
+        )
         self._base_avatar_image = image_bytes
+        self._base_avatar_image_open = open_mouth_bytes
         self._base_avatar_content_type = image_content_type
-        return image_bytes
+        return image_bytes, open_mouth_bytes
 
     async def close(self) -> None:
         """Closes the underlying Live API session without running extraction.
@@ -137,24 +145,38 @@ class LiveConversation:
             await self._session_ctx.__aexit__(None, None, None)
             self._session_ctx = None
 
-    async def finish(self) -> tuple[Persona, bytes | None]:
+    async def finish(self) -> tuple[Persona, bytes | None, bytes | None]:
         await self.close()
         transcript = "\n".join(self._transcript_parts)
         persona = extract_persona(transcript=transcript, genai_client=self.genai_client)
         persona = infer_keywords(persona, self.genai_client)
 
         avatar_image = None
+        avatar_image_open = None
         if self._base_avatar_image is not None:
             # evolve_avatar calls Gemini synchronously and can block for
-            # seconds; run it in a worker thread so it doesn't freeze the
-            # event loop that this same websocket connection's relay_task
-            # depends on.
-            avatar_image = await asyncio.to_thread(
-                evolve_avatar,
-                base_image_bytes=self._base_avatar_image,
-                persona=persona,
-                genai_client=self.genai_client,
-                mime_type=self._base_avatar_content_type or "image/jpeg",
+            # seconds; run both edits in worker threads so they don't
+            # freeze the event loop that this same websocket connection's
+            # relay_task depends on. Evolving both the closed- and
+            # open-mouth variants keeps the talking animation showing the
+            # SAME evolved character instead of reverting to the
+            # unevolved base once attributes are reflected.
+            mime_type = self._base_avatar_content_type or "image/jpeg"
+            avatar_image, avatar_image_open = await asyncio.gather(
+                asyncio.to_thread(
+                    evolve_avatar,
+                    base_image_bytes=self._base_avatar_image,
+                    persona=persona,
+                    genai_client=self.genai_client,
+                    mime_type=mime_type,
+                ),
+                asyncio.to_thread(
+                    evolve_avatar,
+                    base_image_bytes=self._base_avatar_image_open,
+                    persona=persona,
+                    genai_client=self.genai_client,
+                    mime_type=mime_type,
+                ),
             )
 
-        return persona, avatar_image
+        return persona, avatar_image, avatar_image_open

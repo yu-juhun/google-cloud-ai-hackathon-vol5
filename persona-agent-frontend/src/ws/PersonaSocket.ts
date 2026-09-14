@@ -12,6 +12,7 @@ export interface Persona {
   raw_summary: string;
   attributes: PersonaAttribute[];
   avatar_image: string | null;
+  avatar_image_open: string | null;
 }
 
 /** Converts an ArrayBuffer to base64 without spreading it into
@@ -35,7 +36,7 @@ export class PersonaSocket {
   private ws: WebSocket | null = null;
   onPersonaResult: ((persona: Persona) => void) | null = null;
   onAudioChunk: ((chunk: ArrayBuffer) => void) | null = null;
-  onAvatarBaseImage: ((imageBase64: string) => void) | null = null;
+  onAvatarBaseImage: ((imageBase64: string, openMouthImageBase64: string) => void) | null = null;
 
   constructor(private url: string) {}
 
@@ -60,7 +61,7 @@ export class PersonaSocket {
           for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
           this.onAudioChunk?.(bytes.buffer);
         } else if (message.type === "avatar_base_image") {
-          this.onAvatarBaseImage?.(message.data as string);
+          this.onAvatarBaseImage?.(message.data as string, message.open_mouth_data as string);
         }
       };
     });

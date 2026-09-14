@@ -32,6 +32,7 @@ describe("AvatarPanel", () => {
         raw_summary: "テスト要約",
         attributes: [],
         avatar_image: null,
+        avatar_image_open: null,
       });
     });
 
@@ -64,7 +65,7 @@ describe("AvatarPanel", () => {
     render(<AvatarPanel socket={socket} />);
 
     act(() => {
-      socket.onAvatarBaseImage?.("base64data");
+      socket.onAvatarBaseImage?.("base64data", "open-base64data");
     });
 
     const img = screen.getByRole("img", { name: /アバター/ });
@@ -76,7 +77,7 @@ describe("AvatarPanel", () => {
     render(<AvatarPanel socket={socket} />);
 
     act(() => {
-      socket.onAvatarBaseImage?.("base64data");
+      socket.onAvatarBaseImage?.("base64data", "open-base64data");
     });
     act(() => {
       socket.onPersonaResult?.({
@@ -84,11 +85,47 @@ describe("AvatarPanel", () => {
         raw_summary: "テスト要約",
         attributes: [],
         avatar_image: "evolved-base64data",
+        avatar_image_open: "evolved-open-base64data",
       });
     });
 
     const img = screen.getByRole("img", { name: /アバター/ });
     expect(img.getAttribute("src")).toBe("data:image/png;base64,evolved-base64data");
+  });
+
+  it("shows the personalized open-mouth image while the model is speaking", () => {
+    // createAudioPlayback() needs a real AudioContext, which jsdom doesn't
+    // provide — stub just enough of it for onAudioChunk's playback call.
+    class FakeAudioContext {
+      currentTime = 0;
+      createBuffer() {
+        return { copyToChannel: vi.fn(), duration: 0 };
+      }
+      createBufferSource() {
+        return { connect: vi.fn(), start: vi.fn() };
+      }
+      close() {}
+    }
+    // @ts-expect-error test stub
+    globalThis.AudioContext = FakeAudioContext;
+
+    const socket = new PersonaSocket("wss://example.test");
+    render(<AvatarPanel socket={socket} />);
+
+    act(() => {
+      socket.onAvatarBaseImage?.("base64data", "open-base64data");
+    });
+    act(() => {
+      // Simulate the model speaking: onAudioChunk sets mouthOpen based on
+      // volume. Directly drive it via a loud PCM16 chunk instead of
+      // reaching into component internals.
+      const loudSample = 0x7fff;
+      const samples = new Int16Array(100).fill(loudSample);
+      socket.onAudioChunk?.(samples.buffer);
+    });
+
+    const img = screen.getByRole("img", { name: /アバター/ });
+    expect(img.getAttribute("src")).toBe("data:image/png;base64,open-base64data");
   });
 
   it("connects the socket when a photo is selected before starting the conversation", async () => {
