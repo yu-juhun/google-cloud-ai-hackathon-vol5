@@ -14,6 +14,23 @@ export interface Persona {
   avatar_image: string | null;
 }
 
+/** Converts an ArrayBuffer to base64 without spreading it into
+ * String.fromCharCode's argument list — spreading a large Uint8Array
+ * (e.g. a multi-hundred-KB/multi-MB photo) exceeds the JS engine's
+ * function-argument limit and throws, silently failing with no visible
+ * error since callers don't wrap this in a try/catch. Chunking keeps
+ * every fromCharCode call well under that limit. */
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const CHUNK_SIZE = 8192;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK_SIZE) {
+    const chunk = bytes.subarray(i, i + CHUNK_SIZE);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 export class PersonaSocket {
   private ws: WebSocket | null = null;
   onPersonaResult: ((persona: Persona) => void) | null = null;
@@ -51,14 +68,14 @@ export class PersonaSocket {
 
   sendAudioChunk(chunk: ArrayBuffer): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(chunk)));
-    this.ws.send(JSON.stringify({ type: "audio_chunk", data: base64 }));
+    this.ws.send(JSON.stringify({ type: "audio_chunk", data: arrayBufferToBase64(chunk) }));
   }
 
   sendAvatarPhoto(photo: ArrayBuffer, contentType: string): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(photo)));
-    this.ws.send(JSON.stringify({ type: "avatar_photo", data: base64, content_type: contentType }));
+    this.ws.send(
+      JSON.stringify({ type: "avatar_photo", data: arrayBufferToBase64(photo), content_type: contentType }),
+    );
   }
 
   sendFinish(): void {
