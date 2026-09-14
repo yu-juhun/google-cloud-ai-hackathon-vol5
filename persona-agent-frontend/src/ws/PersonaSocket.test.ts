@@ -53,10 +53,38 @@ describe("PersonaSocket", () => {
 
     const ws = FakeWebSocket.instances[0];
     ws.onmessage?.({
-      data: JSON.stringify({ type: "persona_result", data: { persona_id: "abc", raw_summary: "", attributes: [] } }),
+      data: JSON.stringify({
+        type: "persona_result",
+        data: { persona_id: "abc", raw_summary: "", attributes: [], avatar_image: null },
+      }),
     });
 
-    expect(onResult).toHaveBeenCalledWith({ persona_id: "abc", raw_summary: "", attributes: [] });
+    expect(onResult).toHaveBeenCalledWith({ persona_id: "abc", raw_summary: "", attributes: [], avatar_image: null });
+  });
+
+  it("sends a base64 avatar_photo message with content_type", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    socket.connect();
+    const photo = new Uint8Array([9, 9, 9]).buffer;
+
+    socket.sendAvatarPhoto(photo, "image/png");
+
+    const sent = JSON.parse(FakeWebSocket.instances[0].sent[0]);
+    expect(sent.type).toBe("avatar_photo");
+    expect(sent.content_type).toBe("image/png");
+    expect(typeof sent.data).toBe("string");
+  });
+
+  it("calls onAvatarBaseImage when an avatar_base_image message arrives", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    const onAvatarBaseImage = vi.fn();
+    socket.onAvatarBaseImage = onAvatarBaseImage;
+    socket.connect();
+
+    const ws = FakeWebSocket.instances[0];
+    ws.onmessage?.({ data: JSON.stringify({ type: "avatar_base_image", data: "base64imagedata" }) });
+
+    expect(onAvatarBaseImage).toHaveBeenCalledWith("base64imagedata");
   });
 });
 
