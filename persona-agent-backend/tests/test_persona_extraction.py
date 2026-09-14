@@ -11,15 +11,17 @@ def test_extract_persona_parses_model_response_into_persona():
             "raw_summary": "3人家族の父親。車椅子ユーザーでハラール食を希望。",
             "attributes": [
                 {
+                    "domain": "mobility",
                     "category": "mobility",
                     "description": "車椅子、電動、幅63cm",
-                    "priority": "high",
+                    "rank": 1,
                     "confidence": "high",
                 },
                 {
+                    "domain": "dietary",
                     "category": "dietary",
                     "description": "イスラム教徒、ハラール食が必要",
-                    "priority": "high",
+                    "rank": 2,
                     "confidence": "high",
                 },
             ],
@@ -56,3 +58,26 @@ def test_extract_persona_returns_empty_attributes_on_short_transcript():
 
     assert persona.attributes == []
     assert persona.raw_summary == ""
+
+
+def test_extract_persona_produces_unique_ranks():
+    class FakeResponse:
+        text = (
+            '{"raw_summary": "s", "attributes": ['
+            '{"domain": "mobility", "category": "a", "description": "d1", "rank": 1, "confidence": "high"},'
+            '{"domain": "dietary", "category": "b", "description": "d2", "rank": 2, "confidence": "medium"}'
+            "]}"
+        )
+
+    class FakeModels:
+        def generate_content(self, **kwargs):
+            return FakeResponse()
+
+    class FakeClient:
+        models = FakeModels()
+
+    persona = extract_persona(transcript="test transcript", genai_client=FakeClient())
+    ranks = [a.rank for a in persona.attributes]
+    assert ranks == sorted(ranks)
+    assert len(set(ranks)) == len(ranks)
+    assert all(a.domain in ("mobility", "dietary", "purpose", "companions", "language", "background", "other") for a in persona.attributes)

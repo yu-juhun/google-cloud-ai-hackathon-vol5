@@ -10,8 +10,8 @@ def test_infer_keywords_fills_in_each_attribute_in_one_call():
         persona_id="11111111-1111-1111-1111-111111111111",
         raw_summary="車椅子ユーザーでハラール食希望",
         attributes=[
-            Attribute(category="mobility", description="車椅子、幅63cm", priority="high", confidence="high"),
-            Attribute(category="dietary", description="イスラム教徒", priority="high", confidence="high"),
+            Attribute(domain="mobility", category="mobility", description="車椅子、幅63cm", rank=1, confidence="high"),
+            Attribute(domain="dietary", category="dietary", description="イスラム教徒", rank=2, confidence="high"),
         ],
     )
 
