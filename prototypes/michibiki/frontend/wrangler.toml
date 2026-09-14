@@ -1,0 +1,7 @@
+name = "zenn-ai-hackason-fifth"
+compatibility_date = "2026-09-13"
+
+# Cloudflare Workers: build command = npm run build, deploy command = npx wrangler deploy
+[assets]
+directory = "./dist"
+not_found_handling = "single-page-application"
