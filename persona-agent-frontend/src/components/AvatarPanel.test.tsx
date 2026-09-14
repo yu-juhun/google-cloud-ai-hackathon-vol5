@@ -9,7 +9,7 @@ describe("AvatarPanel", () => {
   it("shows the closed-mouth avatar by default", () => {
     render(<AvatarPanel socket={new PersonaSocket("wss://example.test")} />);
     const img = screen.getByRole("img", { name: /アバター/ });
-    expect(img.getAttribute("src")).toContain("avatar-mouth-closed.svg");
+    expect(img.getAttribute("src")).toContain("avatar-default-closed.png");
   });
 
   it("shows a finish button that calls socket.sendFinish", () => {

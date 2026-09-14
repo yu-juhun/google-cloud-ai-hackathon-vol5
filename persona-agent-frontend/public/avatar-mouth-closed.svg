@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="アバター(口を閉じた状態)">
-  <circle cx="100" cy="100" r="90" fill="#f0c9a0"/>
-  <circle cx="70" cy="80" r="8" fill="#333"/>
-  <circle cx="130" cy="80" r="8" fill="#333"/>
-  <line x1="70" y1="130" x2="130" y2="130" stroke="#333" stroke-width="4" stroke-linecap="round"/>
-</svg>

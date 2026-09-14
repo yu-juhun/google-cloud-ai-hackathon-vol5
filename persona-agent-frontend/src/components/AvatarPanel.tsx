@@ -62,13 +62,13 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     ? `data:image/png;base64,${persona.avatar_image}`
     : baseAvatarImage
       ? `data:image/png;base64,${baseAvatarImage}`
-      : "/avatar-mouth-closed.svg";
+      : "/avatar-default-closed.png";
 
   const openSrc = persona?.avatar_image_open
     ? `data:image/png;base64,${persona.avatar_image_open}`
     : baseAvatarImageOpen
       ? `data:image/png;base64,${baseAvatarImageOpen}`
-      : "/avatar-mouth-open.svg";
+      : "/avatar-default-open.png";
 
   return (
     <div>
