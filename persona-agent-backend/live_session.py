@@ -49,9 +49,11 @@ with a text-turn probe) — that verification is the human smoke test itself.
 """
 from google.genai import types
 
+from avatar_generation import evolve_avatar
 from keyword_inference import infer_keywords
 from persona_extraction import extract_persona
 from schemas import Persona
+from youcam_client import generate_base_avatar
 
 SYSTEM_PROMPT = """\
 あなたは、車椅子ユーザーやその家族の旅行・外食プランニングを手伝うアシスタントです。
@@ -67,6 +69,7 @@ class LiveConversation:
         self._session = None
         self._session_ctx = None
         self._transcript_parts: list[str] = []
+        self._base_avatar_image: bytes | None = None
 
     async def start(self) -> None:
         self._session_ctx = self.genai_client.aio.live.connect(
@@ -111,6 +114,13 @@ class LiveConversation:
                     self._transcript_parts.append(f"ユーザー: {user_text}")
                 yield audio_bytes, transcript_text
 
+    def set_base_photo(self, photo_bytes: bytes, content_type: str) -> bytes:
+        """Runs the user's uploaded photo through YouCam once to produce a
+        personalized base avatar, stores it for the finish()-time Nano
+        Banana edit, and returns it so the caller can show it immediately."""
+        self._base_avatar_image = generate_base_avatar(photo_bytes=photo_bytes, content_type=content_type)
+        return self._base_avatar_image
+
     async def close(self) -> None:
         """Closes the underlying Live API session without running extraction.
 
@@ -122,8 +132,18 @@ class LiveConversation:
             await self._session_ctx.__aexit__(None, None, None)
             self._session_ctx = None
 
-    async def finish(self) -> Persona:
+    async def finish(self) -> tuple[Persona, bytes | None]:
         await self.close()
         transcript = "\n".join(self._transcript_parts)
         persona = extract_persona(transcript=transcript, genai_client=self.genai_client)
-        return infer_keywords(persona, self.genai_client)
+        persona = infer_keywords(persona, self.genai_client)
+
+        avatar_image = None
+        if self._base_avatar_image is not None:
+            avatar_image = evolve_avatar(
+                base_image_bytes=self._base_avatar_image,
+                persona=persona,
+                genai_client=self.genai_client,
+            )
+
+        return persona, avatar_image

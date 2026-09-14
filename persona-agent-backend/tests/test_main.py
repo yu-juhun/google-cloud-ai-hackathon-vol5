@@ -1,5 +1,5 @@
 import base64
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -32,7 +32,7 @@ def test_websocket_finish_flow_calls_live_conversation():
         mock_conversation = mock_live_conversation_cls.return_value
         mock_conversation.start = AsyncMock()
         mock_conversation.finish = AsyncMock(
-            return_value=Persona(persona_id="test-id", raw_summary="要約", attributes=[])
+            return_value=(Persona(persona_id="test-id", raw_summary="要約", attributes=[]), b"avatar-bytes")
         )
 
         with client.websocket_connect("/ws/converse") as websocket:
@@ -41,7 +41,12 @@ def test_websocket_finish_flow_calls_live_conversation():
 
         assert data == {
             "type": "persona_result",
-            "data": {"persona_id": "test-id", "raw_summary": "要約", "attributes": []},
+            "data": {
+                "persona_id": "test-id",
+                "raw_summary": "要約",
+                "attributes": [],
+                "avatar_image": base64.b64encode(b"avatar-bytes").decode("ascii"),
+            },
         }
         mock_conversation.start.assert_called_once()
         mock_conversation.finish.assert_called_once()
@@ -73,3 +78,33 @@ def test_websocket_audio_chunk_flow_calls_live_conversation():
             "data": base64.b64encode(b"audio-bytes").decode("ascii"),
         }
         mock_conversation.send_audio.assert_called_once_with(b"input-bytes")
+
+
+def test_websocket_avatar_photo_flow_calls_set_base_photo_and_relays_result():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+        mock_conversation.set_base_photo = MagicMock(return_value=b"base-avatar-bytes")
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="要約", attributes=[]), None)
+        )
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover - makes this an async generator with no items
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json(
+                {"type": "avatar_photo", "data": base64.b64encode(b"photo-bytes").decode("ascii"), "content_type": "image/png"}
+            )
+            data = websocket.receive_json()
+            websocket.send_json({"type": "finish"})
+
+        assert data == {
+            "type": "avatar_base_image",
+            "data": base64.b64encode(b"base-avatar-bytes").decode("ascii"),
+        }
+        mock_conversation.set_base_photo.assert_called_once_with(photo_bytes=b"photo-bytes", content_type="image/png")

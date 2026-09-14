@@ -54,14 +54,26 @@ async def converse(websocket: WebSocket) -> None:
                 audio_bytes = base64.b64decode(message["data"])
                 await conversation.send_audio(audio_bytes)
 
+            elif message.get("type") == "avatar_photo":
+                photo_bytes = base64.b64decode(message["data"])
+                content_type = message.get("content_type", "image/png")
+                base_image = conversation.set_base_photo(photo_bytes=photo_bytes, content_type=content_type)
+                await websocket.send_json(
+                    {"type": "avatar_base_image", "data": base64.b64encode(base_image).decode("ascii")}
+                )
+
             elif message.get("type") == "finish":
                 relay_task.cancel()
                 try:
                     await relay_task
                 except asyncio.CancelledError:
                     pass
-                persona = await conversation.finish()
-                await websocket.send_json({"type": "persona_result", "data": persona.model_dump()})
+                persona, avatar_image = await conversation.finish()
+                persona_data = persona.model_dump()
+                persona_data["avatar_image"] = (
+                    base64.b64encode(avatar_image).decode("ascii") if avatar_image is not None else None
+                )
+                await websocket.send_json({"type": "persona_result", "data": persona_data})
                 break
 
     except WebSocketDisconnect:
