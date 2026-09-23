@@ -52,6 +52,7 @@ import asyncio
 from google.genai import types
 
 from avatar_generation import evolve_avatar, generate_open_mouth_variant
+from default_avatar import DEFAULT_MIME_TYPE, get_default_avatar_closed, get_default_avatar_open
 from keyword_inference import infer_keywords
 from persona_extraction import extract_persona
 from schemas import Persona
@@ -151,32 +152,42 @@ class LiveConversation:
         persona = extract_persona(transcript=transcript, genai_client=self.genai_client)
         persona = infer_keywords(persona, self.genai_client)
 
-        avatar_image = None
-        avatar_image_open = None
+        # Evolve off the YouCam-personalized photo if one was uploaded;
+        # otherwise fall back to the static default avatar so a user who
+        # skips the photo step still gets an evolved, attribute-reflecting
+        # avatar instead of no avatar at all (v2 design spec's
+        # "ベースアバター画像の扱い" fallback).
         if self._base_avatar_image is not None:
-            # evolve_avatar calls Gemini synchronously and can block for
-            # seconds; run both edits in worker threads so they don't
-            # freeze the event loop that this same websocket connection's
-            # relay_task depends on. Evolving both the closed- and
-            # open-mouth variants keeps the talking animation showing the
-            # SAME evolved character instead of reverting to the
-            # unevolved base once attributes are reflected.
+            base_closed = self._base_avatar_image
+            base_open = self._base_avatar_image_open
             mime_type = self._base_avatar_content_type or "image/jpeg"
-            avatar_image, avatar_image_open = await asyncio.gather(
-                asyncio.to_thread(
-                    evolve_avatar,
-                    base_image_bytes=self._base_avatar_image,
-                    persona=persona,
-                    genai_client=self.genai_client,
-                    mime_type=mime_type,
-                ),
-                asyncio.to_thread(
-                    evolve_avatar,
-                    base_image_bytes=self._base_avatar_image_open,
-                    persona=persona,
-                    genai_client=self.genai_client,
-                    mime_type=mime_type,
-                ),
-            )
+        else:
+            base_closed = get_default_avatar_closed()
+            base_open = get_default_avatar_open()
+            mime_type = DEFAULT_MIME_TYPE
+
+        # evolve_avatar calls Gemini synchronously and can block for
+        # seconds; run both edits in worker threads so they don't freeze
+        # the event loop that this same websocket connection's relay_task
+        # depends on. Evolving both the closed- and open-mouth variants
+        # keeps the talking animation showing the SAME evolved character
+        # instead of reverting to the unevolved base once attributes are
+        # reflected.
+        avatar_image, avatar_image_open = await asyncio.gather(
+            asyncio.to_thread(
+                evolve_avatar,
+                base_image_bytes=base_closed,
+                persona=persona,
+                genai_client=self.genai_client,
+                mime_type=mime_type,
+            ),
+            asyncio.to_thread(
+                evolve_avatar,
+                base_image_bytes=base_open,
+                persona=persona,
+                genai_client=self.genai_client,
+                mime_type=mime_type,
+            ),
+        )
 
         return persona, avatar_image, avatar_image_open

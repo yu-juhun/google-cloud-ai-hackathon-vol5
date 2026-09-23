@@ -3,16 +3,19 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from live_session import LiveConversation
-from schemas import Persona
+from schemas import Attribute, Persona
 
 
 @pytest.mark.asyncio
 async def test_finish_runs_extraction_then_keyword_inference():
     with patch("live_session.extract_persona") as mock_extract, patch(
         "live_session.infer_keywords"
-    ) as mock_infer:
+    ) as mock_infer, patch("live_session.evolve_avatar") as mock_evolve, patch(
+        "live_session.get_default_avatar_closed", return_value=b"default-closed"
+    ), patch("live_session.get_default_avatar_open", return_value=b"default-open"):
         mock_extract.return_value = MagicMock(attributes=[MagicMock()])
         mock_infer.return_value = MagicMock(persona_id="final-persona")
+        mock_evolve.side_effect = lambda base_image_bytes, persona, genai_client, mime_type: base_image_bytes
 
         conversation = LiveConversation(genai_client=MagicMock())
         conversation._transcript_parts = ["ユーザー: こんにちは", "モデル: こんにちは、ご旅行のご予定ですか？"]
@@ -22,8 +25,8 @@ async def test_finish_runs_extraction_then_keyword_inference():
         mock_extract.assert_called_once()
         mock_infer.assert_called_once_with(mock_extract.return_value, conversation.genai_client)
         assert result.persona_id == "final-persona"
-        assert avatar_bytes is None
-        assert avatar_bytes_open is None
+        assert avatar_bytes == b"default-closed"
+        assert avatar_bytes_open == b"default-open"
 
 
 def test_set_base_photo_calls_youcam_and_generates_open_mouth_variant(monkeypatch):
@@ -77,17 +80,29 @@ async def test_finish_returns_persona_and_evolved_avatars(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_finish_with_no_photo_returns_none_avatars(monkeypatch):
+async def test_finish_with_no_photo_evolves_the_default_avatar(monkeypatch):
     import live_session
 
-    fake_persona = Persona(persona_id="id", raw_summary="s", attributes=[])
+    fake_persona = Persona(
+        persona_id="id",
+        raw_summary="s",
+        attributes=[Attribute(domain="purpose", category="旅行", description="観光目的", rank=1, confidence="high")],
+    )
     monkeypatch.setattr(live_session, "extract_persona", lambda transcript, genai_client: fake_persona)
     monkeypatch.setattr(live_session, "infer_keywords", lambda persona, genai_client: persona)
+    monkeypatch.setattr(live_session, "get_default_avatar_closed", lambda: b"default-closed")
+    monkeypatch.setattr(live_session, "get_default_avatar_open", lambda: b"default-open")
+
+    def fake_evolve_avatar(base_image_bytes, persona, genai_client, mime_type):
+        assert mime_type == live_session.DEFAULT_MIME_TYPE
+        return b"evolved-" + base_image_bytes
+
+    monkeypatch.setattr(live_session, "evolve_avatar", fake_evolve_avatar)
 
     conversation = live_session.LiveConversation(genai_client=MagicMock())
     conversation._session_ctx = None
 
     persona, avatar_bytes, avatar_bytes_open = await conversation.finish()
 
-    assert avatar_bytes is None
-    assert avatar_bytes_open is None
+    assert avatar_bytes == b"evolved-default-closed"
+    assert avatar_bytes_open == b"evolved-default-open"
