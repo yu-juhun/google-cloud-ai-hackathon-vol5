@@ -34,7 +34,7 @@ def infer_keywords(persona: Persona, genai_client) -> Persona:
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
     parsed = json.loads(response.text)
-    keywords_by_index = parsed["keywords_by_index"]
+    keywords_by_index = parsed.get("keywords_by_index", [])
 
     updated_attributes = [
         attr.model_copy(update={"inferred_keywords": keywords_by_index[i] if i < len(keywords_by_index) else []})
