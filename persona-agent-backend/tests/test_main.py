@@ -147,6 +147,27 @@ def test_websocket_avatar_photo_sends_avatar_error_on_malformed_data():
         mock_conversation.set_base_photo.assert_not_called()
 
 
+def test_websocket_finish_still_succeeds_if_relay_task_already_crashed():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="", attributes=[]), None, None)
+        )
+
+        async def failing_receive_audio_chunks():
+            raise RuntimeError("live api connection dropped")
+            yield  # pragma: no cover - makes this an async generator
+
+        mock_conversation.receive_audio_chunks = failing_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json({"type": "finish"})
+            data = websocket.receive_json()
+
+        assert data["type"] == "persona_result"
+
+
 def test_websocket_finish_flow_sends_finish_error_on_exception():
     with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
         mock_conversation = mock_live_conversation_cls.return_value

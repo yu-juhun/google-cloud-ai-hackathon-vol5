@@ -109,6 +109,12 @@ async def converse(websocket: WebSocket) -> None:
                     await relay_task
                 except asyncio.CancelledError:
                     pass
+                except Exception as e:
+                    # relay_task can die on its own before finish is ever
+                    # sent (e.g. the Live API connection dropping
+                    # mid-conversation) — re-raising that here would skip
+                    # the finish_error handling below entirely.
+                    logger.warning("relay_task ended with an error before finish: %s", e)
                 try:
                     # A persona-extraction/avatar Gemini call can fail
                     # (network error, malformed response) after audio
