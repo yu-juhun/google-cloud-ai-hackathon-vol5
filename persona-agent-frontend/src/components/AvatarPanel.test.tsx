@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { AvatarPanel } from "./AvatarPanel";
 import { PersonaSocket } from "../ws/PersonaSocket";
+import * as micCapture from "../audio/micCapture";
 
 vi.mock("../ws/PersonaSocket");
 
@@ -20,6 +21,25 @@ describe("AvatarPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "完了" }));
 
     expect(socket.sendFinish).toHaveBeenCalled();
+  });
+
+  it("stops the mic capture on unmount, not just on 完了", async () => {
+    const stop = vi.fn();
+    const startMicCaptureSpy = vi
+      .spyOn(micCapture, "startMicCapture")
+      .mockResolvedValue({ stop });
+    const socket = new PersonaSocket("wss://example.test");
+    socket.connect = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<AvatarPanel socket={socket} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "話しかける" }));
+    });
+
+    unmount();
+
+    expect(stop).toHaveBeenCalled();
+    startMicCaptureSpy.mockRestore();
   });
 
   it("shows an error message if starting the conversation fails", async () => {

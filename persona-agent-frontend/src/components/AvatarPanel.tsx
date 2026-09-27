@@ -11,6 +11,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [baseAvatarImageOpen, setBaseAvatarImageOpen] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const playbackRef = useRef<AudioPlayback | null>(null);
+  const captureRef = useRef<MicCapture | null>(null);
 
   useEffect(() => {
     socket.onPersonaResult = (result) => {
@@ -36,6 +37,11 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     return () => {
       playbackRef.current?.stop();
       playbackRef.current = null;
+      // Without this, navigating away mid-conversation (unmounting
+      // without ever clicking 完了) leaves the mic stream open
+      // indefinitely — the browser's recording indicator stays on.
+      captureRef.current?.stop();
+      captureRef.current = null;
     };
   }, [socket]);
 
@@ -47,6 +53,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
         () => {},
       );
       setCapture(mic);
+      captureRef.current = mic;
     } catch (e) {
       // A rejected connect() or a denied mic permission would otherwise
       // be an unhandled promise rejection — the button would just do
@@ -58,6 +65,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const handleFinish = () => {
     socket.sendFinish();
     capture?.stop();
+    captureRef.current = null;
   };
 
   const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
