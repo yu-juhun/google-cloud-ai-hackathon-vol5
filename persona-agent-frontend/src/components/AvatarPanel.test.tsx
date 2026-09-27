@@ -42,6 +42,26 @@ describe("AvatarPanel", () => {
     startMicCaptureSpy.mockRestore();
   });
 
+  it("filters the style options to the selected gender", () => {
+    const socket = new PersonaSocket("wss://example.test");
+    render(<AvatarPanel socket={socket} />);
+
+    act(() => {
+      socket.onAvatarTemplates?.([
+        { id: "female_manga_mood", title: "Manga Mood", category: "Anime", gender: "female" },
+        { id: "male_yearbook", title: "Yearbook", category: "Lifestyle", gender: "male" },
+      ]);
+    });
+
+    const styleSelect = screen.getByLabelText("アバターのスタイル") as HTMLSelectElement;
+    expect(styleSelect.options).toHaveLength(3); // おまかせ + 2 styles
+
+    fireEvent.change(screen.getByLabelText("性別"), { target: { value: "female" } });
+
+    expect(styleSelect.options).toHaveLength(2); // おまかせ + 1 matching style
+    expect(Array.from(styleSelect.options).some((o) => o.value === "male_yearbook")).toBe(false);
+  });
+
   it("shows an error message when the connection drops before finishing", () => {
     const socket = new PersonaSocket("wss://example.test");
     render(<AvatarPanel socket={socket} />);
@@ -144,6 +164,11 @@ describe("AvatarPanel", () => {
     socket.sendAvatarPhoto = vi.fn();
     render(<AvatarPanel socket={socket} />);
 
+    act(() => {
+      socket.onAvatarTemplates?.([
+        { id: "female_manga_mood", title: "Manga Mood", category: "Anime", gender: "female" },
+      ]);
+    });
     fireEvent.change(screen.getByLabelText("アバターのスタイル"), { target: { value: "female_manga_mood" } });
     const file = new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" });
     const input = screen.getByLabelText("顔写真をアップロード") as HTMLInputElement;

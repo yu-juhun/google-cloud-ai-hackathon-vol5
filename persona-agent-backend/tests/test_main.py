@@ -11,6 +11,19 @@ from schemas import Persona
 client = TestClient(app)
 
 
+from contextlib import contextmanager
+
+
+@contextmanager
+def connected(path="/ws/converse"):
+    """websocket_connect that drains the avatar_templates message every
+    successful connection now sends immediately after start() succeeds —
+    tests that don't care about it shouldn't have to know it exists."""
+    with client.websocket_connect(path) as websocket:
+        websocket.receive_json()  # avatar_templates
+        yield websocket
+
+
 def test_build_genai_client_reads_project_and_location_from_env(monkeypatch):
     monkeypatch.setenv("VERTEX_PROJECT_ID", "test-project")
     monkeypatch.setenv("VERTEX_LOCATION", "asia-northeast1")
@@ -61,7 +74,7 @@ def test_websocket_finish_flow_calls_live_conversation():
             )
         )
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json({"type": "finish"})
             data = websocket.receive_json()
 
@@ -95,7 +108,7 @@ def test_websocket_audio_chunk_flow_calls_live_conversation():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json(
                 {"type": "audio_chunk", "data": base64.b64encode(b"input-bytes").decode("ascii")}
             )
@@ -123,7 +136,7 @@ def test_websocket_survives_malformed_audio_chunk_and_still_reaches_finish():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json({"type": "audio_chunk", "data": "not-valid-base64!!!"})
             websocket.send_json({"type": "finish"})
             data = websocket.receive_json()
@@ -150,7 +163,7 @@ def test_websocket_finish_cancels_a_still_running_relay_task():
 
         mock_conversation.receive_audio_chunks = blocking_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json({"type": "finish"})
             data = websocket.receive_json()
 
@@ -171,7 +184,7 @@ def test_websocket_survives_invalid_json_text_and_still_reaches_finish():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_text("this is not valid json{{{")
             websocket.send_json({"type": "finish"})
             data = websocket.receive_json()
@@ -193,7 +206,7 @@ def test_websocket_survives_non_object_message_and_still_reaches_finish():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json(["not", "an", "object"])
             websocket.send_json({"type": "finish"})
             data = websocket.receive_json()
@@ -208,12 +221,33 @@ def test_websocket_avatar_photo_sends_avatar_error_on_malformed_data():
         mock_conversation.close = AsyncMock()
         mock_conversation.set_base_photo = MagicMock()
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json({"type": "avatar_photo", "data": "not-valid-base64!!!"})
             data = websocket.receive_json()
 
         assert data["type"] == "avatar_error"
         mock_conversation.set_base_photo.assert_not_called()
+
+
+def test_websocket_sends_avatar_templates_fallback_when_catalog_fetch_fails():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            data = websocket.receive_json()
+
+        assert data["type"] == "avatar_templates"
+        # list_avatar_templates() raises (no PERFECTCORP_API_KEY in test env);
+        # falls back to VERIFIED_TEMPLATE_IDS rather than sending nothing.
+        assert {t["id"] for t in data["data"]} == main.VERIFIED_TEMPLATE_IDS
 
 
 def test_websocket_sends_start_error_and_closes_on_start_failure():
@@ -241,7 +275,7 @@ def test_websocket_finish_still_succeeds_if_relay_task_already_crashed():
 
         mock_conversation.receive_audio_chunks = failing_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json({"type": "finish"})
             data = websocket.receive_json()
 
@@ -254,7 +288,7 @@ def test_websocket_finish_flow_sends_finish_error_on_exception():
         mock_conversation.start = AsyncMock()
         mock_conversation.finish = AsyncMock(side_effect=RuntimeError("gemini call failed"))
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json({"type": "finish"})
             data = websocket.receive_json()
 
@@ -277,7 +311,7 @@ def test_websocket_avatar_photo_flow_calls_set_base_photo_and_relays_result():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json(
                 {"type": "avatar_photo", "data": base64.b64encode(b"photo-bytes").decode("ascii"), "content_type": "image/png"}
             )
@@ -310,7 +344,7 @@ def test_websocket_avatar_photo_forwards_a_verified_template_id():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json(
                 {
                     "type": "avatar_photo",
@@ -342,7 +376,7 @@ def test_websocket_avatar_photo_ignores_an_unverified_template_id():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json(
                 {
                     "type": "avatar_photo",
@@ -370,7 +404,7 @@ def test_websocket_forwards_a_verified_voice_name_from_the_query_string():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse?voice=Kore"):
+        with connected("/ws/converse?voice=Kore"):
             pass
 
         mock_conversation.start.assert_called_once_with(voice_name="Kore")
@@ -388,7 +422,7 @@ def test_websocket_ignores_an_unverified_voice_name_from_the_query_string():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse?voice=not-a-real-voice"):
+        with connected("/ws/converse?voice=not-a-real-voice"):
             pass
 
         mock_conversation.start.assert_called_once_with(voice_name=None)
@@ -410,7 +444,7 @@ def test_websocket_avatar_photo_flow_survives_youcam_failure():
 
         mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
 
-        with client.websocket_connect("/ws/converse") as websocket:
+        with connected() as websocket:
             websocket.send_json(
                 {"type": "avatar_photo", "data": base64.b64encode(b"photo-bytes").decode("ascii"), "content_type": "image/png"}
             )

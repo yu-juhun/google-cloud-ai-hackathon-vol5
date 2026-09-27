@@ -7,7 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google import genai
 
 from live_session import VOICE_NAMES, LiveConversation
-from youcam_client import VERIFIED_TEMPLATE_IDS
+from youcam_client import VERIFIED_TEMPLATE_IDS, list_avatar_templates
 
 app = FastAPI(title="persona-agent-backend")
 logger = logging.getLogger(__name__)
@@ -59,6 +59,20 @@ async def converse(websocket: WebSocket) -> None:
         await websocket.close()
         return
 
+    # Fetch the real avatar-template catalog once per connection (it's a
+    # free list call, not a paid generation) so the client can offer every
+    # currently-available style/gender combination instead of a hardcoded
+    # guess. Falls back to the single statically-verified id if YouCam
+    # credentials aren't configured or the API call fails — a template
+    # catalog fetch failure must not block starting the voice conversation.
+    try:
+        templates = await asyncio.to_thread(list_avatar_templates)
+    except Exception as e:
+        logger.warning("could not fetch avatar template catalog, falling back: %s", e)
+        templates = [{"id": tid, "title": tid, "category": "", "gender": ""} for tid in VERIFIED_TEMPLATE_IDS]
+    verified_template_ids = {t["id"] for t in templates}
+    await websocket.send_json({"type": "avatar_templates", "data": templates})
+
     relay_task = asyncio.create_task(_relay_model_audio(websocket, conversation))
 
     try:
@@ -106,7 +120,7 @@ async def converse(websocket: WebSocket) -> None:
                 # an unverified template_id to YouCam (that's a real, paid
                 # API call away from a 400) — the client is untrusted input.
                 template_id = (
-                    requested_template_id if requested_template_id in VERIFIED_TEMPLATE_IDS else None
+                    requested_template_id if requested_template_id in verified_template_ids else None
                 )
                 try:
                     # set_base_photo calls YouCam synchronously (it can

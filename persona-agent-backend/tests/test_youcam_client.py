@@ -134,3 +134,45 @@ def test_get_access_token_encrypts_payload_and_parses_result_envelope(monkeypatc
     assert body["client_id"] == "fake-client-id"
     assert isinstance(body["id_token"], str)
     assert len(body["id_token"]) > 0
+
+
+@patch("youcam_client._get_access_token", return_value="fake-token")
+@patch("youcam_client.requests.get")
+def test_list_avatar_templates_paginates_and_derives_gender(mock_get, _mock_token):
+    youcam_client._template_catalog_cache = None
+    page1 = MagicMock()
+    page1.json.return_value = {
+        "data": {
+            "templates": [{"id": "female_manga_mood", "title": "Manga Mood", "category_name": "Anime"}],
+            "next_token": "abc",
+        }
+    }
+    page2 = MagicMock()
+    page2.json.return_value = {
+        "data": {
+            "templates": [{"id": "male_yearbook", "title": "Yearbook", "category_name": "Lifestyle"}],
+        }
+    }
+    mock_get.side_effect = [page1, page2]
+
+    templates = youcam_client.list_avatar_templates()
+
+    assert templates == [
+        {"id": "female_manga_mood", "title": "Manga Mood", "category": "Anime", "gender": "female"},
+        {"id": "male_yearbook", "title": "Yearbook", "category": "Lifestyle", "gender": "male"},
+    ]
+    assert mock_get.call_count == 2
+
+
+@patch("youcam_client._get_access_token", return_value="fake-token")
+@patch("youcam_client.requests.get")
+def test_list_avatar_templates_caches_after_first_call(mock_get, _mock_token):
+    youcam_client._template_catalog_cache = None
+    page = MagicMock()
+    page.json.return_value = {"data": {"templates": [{"id": "female_manga_mood", "title": "x", "category_name": "y"}]}}
+    mock_get.return_value = page
+
+    youcam_client.list_avatar_templates()
+    youcam_client.list_avatar_templates()
+
+    assert mock_get.call_count == 1

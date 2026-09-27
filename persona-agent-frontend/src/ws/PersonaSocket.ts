@@ -7,6 +7,13 @@ export interface PersonaAttribute {
   inferred_keywords: string[];
 }
 
+export interface AvatarTemplate {
+  id: string;
+  title: string;
+  category: string;
+  gender: string;
+}
+
 export interface Persona {
   persona_id: string;
   raw_summary: string;
@@ -47,6 +54,10 @@ export class PersonaSocket {
    * drop (network loss, server restart) that none of the other
    * callbacks would otherwise report. */
   onDisconnected: ((event: CloseEvent) => void) | null = null;
+  /** Fires once per connection with the real, currently-available YouCam
+   * avatar template catalog (see persona-agent-backend's
+   * youcam_client.list_avatar_templates) — never a hardcoded guess. */
+  onAvatarTemplates: ((templates: AvatarTemplate[]) => void) | null = null;
 
   constructor(private url: string) {}
 
@@ -97,6 +108,8 @@ export class PersonaSocket {
           this.onFinishError?.(message.message as string);
         } else if (message.type === "start_error") {
           this.onStartError?.(message.message as string);
+        } else if (message.type === "avatar_templates") {
+          this.onAvatarTemplates?.(message.data as AvatarTemplate[]);
         }
       };
     });

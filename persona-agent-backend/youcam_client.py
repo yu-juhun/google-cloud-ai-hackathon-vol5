@@ -20,13 +20,59 @@ BASE_URL = "https://yce-api-01.makeupar.com"
 POLL_INTERVAL_SECONDS = 3
 MAX_POLL_ATTEMPTS = 40
 
-# template_id values confirmed against the real /s2s/v2.0/task/ai-avatar
-# endpoint (2026-09-27): "female_manga_mood" returns 200; the symmetric
-# guess "male_manga_mood" returns 400 InvalidTemplate — template names are
-# NOT a simple <gender>_<style>_<mood> pattern, so do not guess new values.
-# Add to this set only after confirming a new template_id against the live
-# API the same way (see this file's generate_base_avatar docstring).
+# Fallback used only if list_avatar_templates() can't reach the real API
+# (e.g. PERFECTCORP_API_KEY not configured). Confirmed against the real
+# /s2s/v2.0/task/ai-avatar endpoint (2026-09-27). Template names are NOT a
+# simple <gender>_<style>_<mood> pattern — e.g. "male_manga_mood" (a
+# plausible symmetric guess) returns 400 InvalidTemplate even though
+# "female_manga_mood" is real, so this set exists to avoid ever guessing.
 VERIFIED_TEMPLATE_IDS = {"female_manga_mood"}
+
+_template_catalog_cache: list[dict] | None = None
+
+
+def list_avatar_templates() -> list[dict]:
+    """Fetches the real AI Avatar template catalog from
+    GET /s2s/v2.0/task/template/ai-avatar (paginated via next_token),
+    confirmed live on 2026-09-27: 71 templates, each {"id", "title",
+    "category_name"}, ids prefixed "male_"/"female_" (not every style has
+    both genders — e.g. "manga_mood" only has a female_ variant). This
+    endpoint is a free list call, unlike task creation, so it's safe to
+    call on every avatar_photo flow rather than shipping a static
+    snapshot that goes stale as Perfect Corp adds/removes templates.
+    Result is cached for the process lifetime — the catalog doesn't
+    change within a single deployment's lifespan.
+    Raises requests.HTTPError/KeyError on auth or shape failures; callers
+    decide how to fall back (see VERIFIED_TEMPLATE_IDS)."""
+    global _template_catalog_cache
+    if _template_catalog_cache is not None:
+        return _template_catalog_cache
+
+    token = _get_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    templates: list[dict] = []
+    starting_token: str | None = None
+    while True:
+        params = {"page_size": 20}
+        if starting_token:
+            params["starting_token"] = starting_token
+        resp = requests.get(
+            f"{BASE_URL}/s2s/v2.0/task/template/ai-avatar", headers=headers, params=params, timeout=15
+        )
+        resp.raise_for_status()
+        data = resp.json()["data"]
+        for t in data["templates"]:
+            gender, _, _ = t["id"].partition("_")
+            templates.append(
+                {"id": t["id"], "title": t["title"], "category": t["category_name"], "gender": gender}
+            )
+        starting_token = data.get("next_token")
+        if not starting_token:
+            break
+
+    _template_catalog_cache = templates
+    return templates
 
 
 def _get_access_token() -> str:

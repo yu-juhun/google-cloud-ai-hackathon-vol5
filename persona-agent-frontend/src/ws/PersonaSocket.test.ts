@@ -125,6 +125,19 @@ describe("PersonaSocket", () => {
     expect(onError).toHaveBeenCalledWith("model not found");
   });
 
+  it("calls onAvatarTemplates when an avatar_templates message arrives", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    const onTemplates = vi.fn();
+    socket.onAvatarTemplates = onTemplates;
+    socket.connect();
+
+    const ws = FakeWebSocket.instances[0];
+    const templates = [{ id: "female_manga_mood", title: "Manga Mood", category: "Anime", gender: "female" }];
+    ws.onmessage?.({ data: JSON.stringify({ type: "avatar_templates", data: templates }) });
+
+    expect(onTemplates).toHaveBeenCalledWith(templates);
+  });
+
   it("calls onDisconnected when the connection closes", () => {
     const socket = new PersonaSocket("wss://example.test/ws/converse");
     const onDisconnected = vi.fn();
