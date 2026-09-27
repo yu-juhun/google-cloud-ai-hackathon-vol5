@@ -35,6 +35,26 @@ describe("PersonaSocket", () => {
     assert_audio_chunk_message(sent);
   });
 
+  it("reuses the in-flight connection instead of opening a second socket", async () => {
+    class ConnectingFakeWebSocket extends FakeWebSocket {
+      static readonly CONNECTING = 0;
+      readyState = ConnectingFakeWebSocket.CONNECTING;
+    }
+    // @ts-expect-error test double
+    globalThis.WebSocket = ConnectingFakeWebSocket;
+
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    const firstConnect = socket.connect();
+    const secondConnect = socket.connect();
+
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(firstConnect).toBe(secondConnect);
+
+    FakeWebSocket.instances[0].onopen?.();
+    await firstConnect;
+    await secondConnect;
+  });
+
   it("sends a finish message", () => {
     const socket = new PersonaSocket("wss://example.test/ws/converse");
     socket.connect();

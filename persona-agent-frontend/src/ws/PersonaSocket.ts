@@ -35,6 +35,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 export class PersonaSocket {
   private ws: WebSocket | null = null;
+  private connecting: Promise<void> | null = null;
   onPersonaResult: ((persona: Persona) => void) | null = null;
   onAudioChunk: ((chunk: ArrayBuffer) => void) | null = null;
   onAvatarBaseImage: ((imageBase64: string, openMouthImageBase64: string) => void) | null = null;
@@ -50,11 +51,22 @@ export class PersonaSocket {
    * InvalidStateError, silently dropping audio chunks sent too early. */
   connect(): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
-    return new Promise((resolve, reject) => {
+    // Without this, a second connect() while the first is still
+    // CONNECTING (e.g. clicking 話しかける then immediately picking a
+    // photo) would create a whole second WebSocket, orphaning the first
+    // one mid-handshake instead of reusing it.
+    if (this.connecting) return this.connecting;
+    this.connecting = new Promise((resolve, reject) => {
       const ws = new WebSocket(this.url);
       this.ws = ws;
-      ws.onopen = () => resolve();
-      ws.onerror = (event) => reject(event);
+      ws.onopen = () => {
+        this.connecting = null;
+        resolve();
+      };
+      ws.onerror = (event) => {
+        this.connecting = null;
+        reject(event);
+      };
       ws.onmessage = (event: { data: string }) => {
         const message = JSON.parse(event.data);
         if (message.type === "persona_result") {
@@ -75,6 +87,7 @@ export class PersonaSocket {
         }
       };
     });
+    return this.connecting;
   }
 
   sendAudioChunk(chunk: ArrayBuffer): void {
