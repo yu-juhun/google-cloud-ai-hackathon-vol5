@@ -19,7 +19,11 @@ from cryptography.hazmat.primitives.serialization import load_der_public_key
 
 BASE_URL = "https://yce-api-01.makeupar.com"
 POLL_INTERVAL_SECONDS = 3
-MAX_POLL_ATTEMPTS = 40
+# Was 40 (120s total) — observed live on 2026-09-27: a real task was still
+# "running" past 120s and only reached "success" around ~150s. 120s was
+# timing out tasks that would have succeeded seconds later. 100 attempts
+# (300s) gives real headroom over the slowest observed case.
+MAX_POLL_ATTEMPTS = 100
 
 _ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 _TEMPLATE_CATALOG_PATH = os.path.join(_ASSETS_DIR, "avatar_templates.json")
