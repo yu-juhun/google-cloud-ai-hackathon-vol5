@@ -19,3 +19,5 @@ okf_version: 0.2
 - [service-topology](./concepts/service-topology.md) — frontend / backend-api / 3 agent の5台体制
 - [frontend-mock-strategy](./concepts/frontend-mock-strategy.md) — モック先行開発と実APIへの差し替え方針
 - [deployed-endpoints](./concepts/deployed-endpoints.md) — 統合デモ環境のデプロイ済みURL
+- [persona-json-contract](./concepts/persona-json-contract.md) — 他エージェント向けpersona JSON契約(domain/rank/confidence/schema_version)
+- [avatar-visualization-policy](./concepts/avatar-visualization-policy.md) — アバター画像の視覚化ドメイン許可リストとその理由
