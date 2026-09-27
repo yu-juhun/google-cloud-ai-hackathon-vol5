@@ -9,6 +9,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [capture, setCapture] = useState<MicCapture | null>(null);
   const [baseAvatarImage, setBaseAvatarImage] = useState<string | null>(null);
   const [baseAvatarImageOpen, setBaseAvatarImageOpen] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const playbackRef = useRef<AudioPlayback | null>(null);
 
   useEffect(() => {
@@ -17,6 +18,8 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
       setBaseAvatarImage(imageBase64);
       setBaseAvatarImageOpen(openMouthImageBase64);
     };
+    socket.onAvatarError = (message) => setErrorMessage(`アバター写真の処理に失敗しました: ${message}`);
+    socket.onFinishError = (message) => setErrorMessage(`結果の生成に失敗しました: ${message}`);
     socket.onAudioChunk = (chunk) => {
       if (!playbackRef.current) {
         playbackRef.current = createAudioPlayback();
@@ -79,6 +82,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
       <img src={mouthOpen ? openSrc : closedSrc} alt="アバター" width={200} height={200} />
       <button onClick={handleStart}>話しかける</button>
       <button onClick={handleFinish}>完了</button>
+      {errorMessage && <p role="alert">{errorMessage}</p>}
       {persona && (
         <div>
           <p>{persona.raw_summary}</p>

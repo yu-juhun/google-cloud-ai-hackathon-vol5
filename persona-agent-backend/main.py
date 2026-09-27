@@ -86,15 +86,24 @@ async def converse(websocket: WebSocket) -> None:
                     await relay_task
                 except asyncio.CancelledError:
                     pass
-                persona, avatar_image, avatar_image_open = await conversation.finish()
-                persona_data = persona.model_dump()
-                persona_data["avatar_image"] = (
-                    base64.b64encode(avatar_image).decode("ascii") if avatar_image is not None else None
-                )
-                persona_data["avatar_image_open"] = (
-                    base64.b64encode(avatar_image_open).decode("ascii") if avatar_image_open is not None else None
-                )
-                await websocket.send_json({"type": "persona_result", "data": persona_data})
+                try:
+                    # A persona-extraction/avatar Gemini call can fail
+                    # (network error, malformed response) after audio
+                    # relaying has already stopped; without this the
+                    # client would get no response at all instead of a
+                    # message it can show the user.
+                    persona, avatar_image, avatar_image_open = await conversation.finish()
+                except Exception as e:
+                    await websocket.send_json({"type": "finish_error", "message": str(e)})
+                else:
+                    persona_data = persona.model_dump()
+                    persona_data["avatar_image"] = (
+                        base64.b64encode(avatar_image).decode("ascii") if avatar_image is not None else None
+                    )
+                    persona_data["avatar_image_open"] = (
+                        base64.b64encode(avatar_image_open).decode("ascii") if avatar_image_open is not None else None
+                    )
+                    await websocket.send_json({"type": "persona_result", "data": persona_data})
                 break
 
     except WebSocketDisconnect:

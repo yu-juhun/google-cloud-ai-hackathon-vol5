@@ -38,6 +38,8 @@ export class PersonaSocket {
   onPersonaResult: ((persona: Persona) => void) | null = null;
   onAudioChunk: ((chunk: ArrayBuffer) => void) | null = null;
   onAvatarBaseImage: ((imageBase64: string, openMouthImageBase64: string) => void) | null = null;
+  onAvatarError: ((message: string) => void) | null = null;
+  onFinishError: ((message: string) => void) | null = null;
 
   constructor(private url: string) {}
 
@@ -63,6 +65,10 @@ export class PersonaSocket {
           this.onAudioChunk?.(bytes.buffer);
         } else if (message.type === "avatar_base_image") {
           this.onAvatarBaseImage?.(message.data as string, message.open_mouth_data as string);
+        } else if (message.type === "avatar_error") {
+          this.onAvatarError?.(message.message as string);
+        } else if (message.type === "finish_error") {
+          this.onFinishError?.(message.message as string);
         }
       };
     });

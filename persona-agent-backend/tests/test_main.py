@@ -86,6 +86,19 @@ def test_websocket_audio_chunk_flow_calls_live_conversation():
         mock_conversation.send_audio.assert_called_once_with(b"input-bytes")
 
 
+def test_websocket_finish_flow_sends_finish_error_on_exception():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.finish = AsyncMock(side_effect=RuntimeError("gemini call failed"))
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json({"type": "finish"})
+            data = websocket.receive_json()
+
+        assert data == {"type": "finish_error", "message": "gemini call failed"}
+
+
 def test_websocket_avatar_photo_flow_calls_set_base_photo_and_relays_result():
     with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
         mock_conversation = mock_live_conversation_cls.return_value

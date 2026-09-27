@@ -68,6 +68,30 @@ describe("PersonaSocket", () => {
     });
   });
 
+  it("calls onAvatarError when an avatar_error message arrives", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    const onError = vi.fn();
+    socket.onAvatarError = onError;
+    socket.connect();
+
+    const ws = FakeWebSocket.instances[0];
+    ws.onmessage?.({ data: JSON.stringify({ type: "avatar_error", message: "no face detected" }) });
+
+    expect(onError).toHaveBeenCalledWith("no face detected");
+  });
+
+  it("calls onFinishError when a finish_error message arrives", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    const onError = vi.fn();
+    socket.onFinishError = onError;
+    socket.connect();
+
+    const ws = FakeWebSocket.instances[0];
+    ws.onmessage?.({ data: JSON.stringify({ type: "finish_error", message: "gemini call failed" }) });
+
+    expect(onError).toHaveBeenCalledWith("gemini call failed");
+  });
+
   it("sends a base64 avatar_photo message with content_type", () => {
     const socket = new PersonaSocket("wss://example.test/ws/converse");
     socket.connect();
