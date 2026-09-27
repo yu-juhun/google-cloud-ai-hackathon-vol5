@@ -44,7 +44,15 @@ async def _relay_model_audio(websocket: WebSocket, conversation: LiveConversatio
 async def converse(websocket: WebSocket) -> None:
     await websocket.accept()
     conversation = LiveConversation(genai_client=_build_genai_client())
-    await conversation.start()
+    try:
+        # A startup failure (bad Vertex credentials, an unavailable Live
+        # API model) must reach the client as a message, not just a
+        # closed connection with no explanation.
+        await conversation.start()
+    except Exception as e:
+        await websocket.send_json({"type": "start_error", "message": str(e)})
+        await websocket.close()
+        return
 
     relay_task = asyncio.create_task(_relay_model_audio(websocket, conversation))
 

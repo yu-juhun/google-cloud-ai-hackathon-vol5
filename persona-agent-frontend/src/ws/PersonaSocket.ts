@@ -40,6 +40,7 @@ export class PersonaSocket {
   onAvatarBaseImage: ((imageBase64: string, openMouthImageBase64: string) => void) | null = null;
   onAvatarError: ((message: string) => void) | null = null;
   onFinishError: ((message: string) => void) | null = null;
+  onStartError: ((message: string) => void) | null = null;
 
   constructor(private url: string) {}
 
@@ -69,6 +70,8 @@ export class PersonaSocket {
           this.onAvatarError?.(message.message as string);
         } else if (message.type === "finish_error") {
           this.onFinishError?.(message.message as string);
+        } else if (message.type === "start_error") {
+          this.onStartError?.(message.message as string);
         }
       };
     });

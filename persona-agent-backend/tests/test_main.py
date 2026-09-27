@@ -147,6 +147,17 @@ def test_websocket_avatar_photo_sends_avatar_error_on_malformed_data():
         mock_conversation.set_base_photo.assert_not_called()
 
 
+def test_websocket_sends_start_error_and_closes_on_start_failure():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock(side_effect=RuntimeError("model not found"))
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            data = websocket.receive_json()
+
+        assert data == {"type": "start_error", "message": "model not found"}
+
+
 def test_websocket_finish_still_succeeds_if_relay_task_already_crashed():
     with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
         mock_conversation = mock_live_conversation_cls.return_value

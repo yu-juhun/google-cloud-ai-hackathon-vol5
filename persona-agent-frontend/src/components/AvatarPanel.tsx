@@ -24,6 +24,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     };
     socket.onAvatarError = (message) => setErrorMessage(`アバター写真の処理に失敗しました: ${message}`);
     socket.onFinishError = (message) => setErrorMessage(`結果の生成に失敗しました: ${message}`);
+    socket.onStartError = (message) => setErrorMessage(`会話の開始に失敗しました: ${message}`);
     socket.onAudioChunk = (chunk) => {
       if (!playbackRef.current) {
         playbackRef.current = createAudioPlayback();

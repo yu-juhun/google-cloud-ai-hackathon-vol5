@@ -92,6 +92,18 @@ describe("PersonaSocket", () => {
     expect(onError).toHaveBeenCalledWith("gemini call failed");
   });
 
+  it("calls onStartError when a start_error message arrives", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    const onError = vi.fn();
+    socket.onStartError = onError;
+    socket.connect();
+
+    const ws = FakeWebSocket.instances[0];
+    ws.onmessage?.({ data: JSON.stringify({ type: "start_error", message: "model not found" }) });
+
+    expect(onError).toHaveBeenCalledWith("model not found");
+  });
+
   it("sends a base64 avatar_photo message with content_type", () => {
     const socket = new PersonaSocket("wss://example.test/ws/converse");
     socket.connect();
