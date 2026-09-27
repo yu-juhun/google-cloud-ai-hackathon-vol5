@@ -160,17 +160,8 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
         <h1 className="avatar-panel__title">ペルソナ・インテイクエージェント</h1>
       </header>
 
-      <Card className="avatar-panel__avatar-card">
-        <img
-          className="avatar-panel__avatar-image"
-          src={mouthOpen ? openSrc : closedSrc}
-          alt="アバター"
-          width={200}
-          height={200}
-        />
-      </Card>
-
-      <Card>
+      <Card className="avatar-panel__step">
+        <h2 className="avatar-panel__step-title">① 性別とスタイル</h2>
         <TemplatePicker
           catalog={catalog}
           gender={gender}
@@ -180,23 +171,39 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
         />
       </Card>
 
-      <label className="avatar-panel__upload">
-        <span>{readyToUpload ? "顔写真をアップロード" : "先に性別とスタイルを選んでください"}</span>
-        <input type="file" accept="image/*" onChange={handlePhotoChange} disabled={!readyToUpload} />
-      </label>
+      <Card className="avatar-panel__step">
+        <h2 className="avatar-panel__step-title">② 顔写真</h2>
+        <div className="avatar-panel__avatar-card">
+          <img
+            className="avatar-panel__avatar-image"
+            src={mouthOpen ? openSrc : closedSrc}
+            alt="アバター"
+            width={160}
+            height={160}
+          />
+          <label className="avatar-panel__upload">
+            <span>{readyToUpload ? "顔写真をアップロード" : "先に性別とスタイルを選んでください"}</span>
+            <input type="file" accept="image/*" onChange={handlePhotoChange} disabled={!readyToUpload} />
+          </label>
+        </div>
+      </Card>
 
-      <section className="avatar-panel__options">
+      <Card className="avatar-panel__step">
+        <h2 className="avatar-panel__step-title">③ 声</h2>
         <Select label="声を選ぶ" value={voiceName} onChange={(e) => setVoiceName(e.target.value)} options={VOICE_OPTIONS} />
-      </section>
+      </Card>
 
-      <section className="avatar-panel__controls">
-        <Button variant="primary" onClick={handleStart}>
-          話しかける
-        </Button>
-        <Button variant="secondary" onClick={handleFinish}>
-          完了
-        </Button>
-      </section>
+      <Card className="avatar-panel__step">
+        <h2 className="avatar-panel__step-title">④ 会話</h2>
+        <section className="avatar-panel__controls">
+          <Button variant="primary" onClick={handleStart}>
+            話しかける
+          </Button>
+          <Button variant="secondary" onClick={handleFinish} disabled={!capture}>
+            完了
+          </Button>
+        </section>
+      </Card>
 
       {errorMessage && <Alert tone="danger">{errorMessage}</Alert>}
 

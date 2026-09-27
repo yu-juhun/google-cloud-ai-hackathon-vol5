@@ -36,14 +36,23 @@ describe("AvatarPanel", () => {
     expect(img.getAttribute("src")).toContain("avatar-default-closed.png");
   });
 
-  it("shows a finish button that calls socket.sendFinish", () => {
+  it("shows a finish button, disabled until the conversation actually starts", async () => {
+    const stop = vi.fn();
+    const startMicCaptureSpy = vi.spyOn(micCapture, "startMicCapture").mockResolvedValue({ stop });
     const socket = new PersonaSocket("wss://example.test");
+    socket.connect = vi.fn().mockResolvedValue(undefined);
     socket.sendFinish = vi.fn();
     render(<AvatarPanel socket={socket} />);
 
+    expect(screen.getByRole("button", { name: "完了" })).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "話しかける" }));
+    });
     fireEvent.click(screen.getByRole("button", { name: "完了" }));
 
     expect(socket.sendFinish).toHaveBeenCalled();
+    startMicCaptureSpy.mockRestore();
   });
 
   it("stops the mic capture on unmount, not just on 完了", async () => {
