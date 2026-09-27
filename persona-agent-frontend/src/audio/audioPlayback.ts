@@ -1,5 +1,10 @@
 export interface AudioPlayback {
   playChunk: (chunk: ArrayBuffer) => void;
+  /** Must be called from within a user-gesture handler (e.g. a click) —
+   * browsers create/leave an AudioContext "suspended" under autoplay
+   * policy otherwise, and a suspended context never actually outputs
+   * audio even though scheduling calls succeed silently. */
+  resume: () => Promise<void>;
   stop: () => void;
 }
 
@@ -11,6 +16,9 @@ export function createAudioPlayback(sampleRate = 24000): AudioPlayback {
   let nextStartTime = 0;
 
   return {
+    async resume() {
+      if (audioContext.state === "suspended") await audioContext.resume();
+    },
     playChunk(chunk: ArrayBuffer) {
       const pcm16 = new Int16Array(chunk);
       const float32 = new Float32Array(pcm16.length);

@@ -9,9 +9,14 @@ class FakeAudioBufferSource {
 
 class FakeAudioContext {
   currentTime = 0;
+  state = "suspended";
   createdBuffers: { channelData: Float32Array; sampleRate: number }[] = [];
   sources: FakeAudioBufferSource[] = [];
   destination = {};
+
+  async resume() {
+    this.state = "running";
+  }
 
   createBuffer(_channels: number, length: number, sampleRate: number) {
     const channelData = new Float32Array(length);
@@ -92,5 +97,23 @@ describe("createAudioPlayback", () => {
     playback.stop();
 
     expect(created!.close).toHaveBeenCalled();
+  });
+
+  it("resumes a suspended AudioContext, and is a no-op when already running", async () => {
+    let created: FakeAudioContext | null = null;
+    class TrackedFakeAudioContext extends FakeAudioContext {
+      constructor() {
+        super();
+        created = this;
+      }
+    }
+    // @ts-expect-error test stub
+    globalThis.AudioContext = TrackedFakeAudioContext;
+
+    const playback = createAudioPlayback(24000);
+    expect(created!.state).toBe("suspended");
+
+    await playback.resume();
+    expect(created!.state).toBe("running");
   });
 });

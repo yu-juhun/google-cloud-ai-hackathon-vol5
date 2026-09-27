@@ -1,10 +1,33 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { AvatarPanel } from "./AvatarPanel";
 import { PersonaSocket, AvatarTemplateCatalog } from "../ws/PersonaSocket";
 import * as micCapture from "../audio/micCapture";
 
 vi.mock("../ws/PersonaSocket");
+
+// createAudioPlayback() needs a real AudioContext, which jsdom doesn't
+// provide — stubbed globally since handleStart now creates one
+// synchronously on every "話しかける" click (see AvatarPanel.tsx).
+class FakeAudioContext {
+  currentTime = 0;
+  state = "suspended";
+  async resume() {
+    this.state = "running";
+  }
+  createBuffer() {
+    return { copyToChannel: vi.fn(), duration: 0 };
+  }
+  createBufferSource() {
+    return { connect: vi.fn(), start: vi.fn() };
+  }
+  close() {}
+}
+
+beforeEach(() => {
+  // @ts-expect-error test stub
+  globalThis.AudioContext = FakeAudioContext;
+});
 
 const SAMPLE_CATALOG: AvatarTemplateCatalog = {
   female: { Anime: [{ id: "female_manga_mood", title: "Manga Mood", thumb: null }] },
@@ -134,6 +157,21 @@ describe("AvatarPanel", () => {
     });
 
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("resumes the AudioContext synchronously within the click handler", async () => {
+    const resumeSpy = vi.spyOn(FakeAudioContext.prototype, "resume");
+    const socket = new PersonaSocket("wss://example.test");
+    socket.connect = vi.fn().mockResolvedValue(undefined);
+    vi.spyOn(micCapture, "startMicCapture").mockResolvedValue({ stop: vi.fn() });
+    render(<AvatarPanel socket={socket} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "話しかける" }));
+    });
+
+    expect(resumeSpy).toHaveBeenCalled();
+    resumeSpy.mockRestore();
   });
 
   it("shows an error message if starting the conversation fails", async () => {
@@ -276,21 +314,6 @@ describe("AvatarPanel", () => {
   });
 
   it("shows the personalized open-mouth image while the model is speaking", () => {
-    // createAudioPlayback() needs a real AudioContext, which jsdom doesn't
-    // provide — stub just enough of it for onAudioChunk's playback call.
-    class FakeAudioContext {
-      currentTime = 0;
-      createBuffer() {
-        return { copyToChannel: vi.fn(), duration: 0 };
-      }
-      createBufferSource() {
-        return { connect: vi.fn(), start: vi.fn() };
-      }
-      close() {}
-    }
-    // @ts-expect-error test stub
-    globalThis.AudioContext = FakeAudioContext;
-
     const socket = new PersonaSocket("wss://example.test");
     render(<AvatarPanel socket={socket} />);
 

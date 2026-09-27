@@ -60,6 +60,10 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
       }
     };
     socket.onAudioChunk = (chunk) => {
+      // playbackRef is normally already set by handleStart (created
+      // synchronously inside the click handler so the browser ties it to
+      // that user gesture) — this is only a fallback for the unlikely
+      // case audio arrives before that runs.
       if (!playbackRef.current) {
         playbackRef.current = createAudioPlayback();
       }
@@ -94,6 +98,16 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
 
   const handleStart = async () => {
     try {
+      // Created synchronously here, in direct response to the click,
+      // rather than lazily on the first audio_chunk (which arrives from
+      // an async WebSocket message well after this call stack — browsers
+      // can leave an AudioContext created there permanently "suspended"
+      // under autoplay policy, so audio never actually plays even though
+      // the mouth still animates from the raw PCM data itself).
+      if (!playbackRef.current) {
+        playbackRef.current = createAudioPlayback();
+      }
+      await playbackRef.current.resume();
       await socket.connect(voiceName || undefined);
       const mic = await startMicCapture(
         (chunk) => socket.sendAudioChunk(chunk),
