@@ -13,10 +13,14 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const playbackRef = useRef<AudioPlayback | null>(null);
 
   useEffect(() => {
-    socket.onPersonaResult = (result) => setPersona(result);
+    socket.onPersonaResult = (result) => {
+      setPersona(result);
+      setErrorMessage(null);
+    };
     socket.onAvatarBaseImage = (imageBase64, openMouthImageBase64) => {
       setBaseAvatarImage(imageBase64);
       setBaseAvatarImageOpen(openMouthImageBase64);
+      setErrorMessage(null);
     };
     socket.onAvatarError = (message) => setErrorMessage(`アバター写真の処理に失敗しました: ${message}`);
     socket.onFinishError = (message) => setErrorMessage(`結果の生成に失敗しました: ${message}`);

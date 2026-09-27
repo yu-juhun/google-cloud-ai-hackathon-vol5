@@ -61,6 +61,31 @@ describe("AvatarPanel", () => {
     expect(contentType).toBe("image/png");
   });
 
+  it("shows the avatar_error message", () => {
+    const socket = new PersonaSocket("wss://example.test");
+    render(<AvatarPanel socket={socket} />);
+
+    act(() => {
+      socket.onAvatarError?.("no face detected");
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("no face detected");
+  });
+
+  it("clears a previous avatar_error once a later avatar_base_image succeeds", () => {
+    const socket = new PersonaSocket("wss://example.test");
+    render(<AvatarPanel socket={socket} />);
+
+    act(() => {
+      socket.onAvatarError?.("no face detected");
+    });
+    act(() => {
+      socket.onAvatarBaseImage?.("base64data", "open-base64data");
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("displays the avatar_base_image once received", () => {
     const socket = new PersonaSocket("wss://example.test");
     render(<AvatarPanel socket={socket} />);
