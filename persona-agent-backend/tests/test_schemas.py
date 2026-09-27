@@ -56,3 +56,9 @@ def test_persona_serializes_to_expected_shape():
     assert dumped["persona_id"] == "11111111-1111-1111-1111-111111111111"
     assert dumped["attributes"][0]["category"] == "mobility"
     assert dumped["attributes"][0]["inferred_keywords"] == []
+
+
+def test_persona_defaults_schema_version_to_2():
+    persona = Persona(persona_id="11111111-1111-1111-1111-111111111111", raw_summary="", attributes=[])
+    assert persona.schema_version == "2"
+    assert persona.model_dump()["schema_version"] == "2"
