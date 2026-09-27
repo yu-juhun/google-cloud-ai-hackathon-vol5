@@ -289,7 +289,109 @@ def test_websocket_avatar_photo_flow_calls_set_base_photo_and_relays_result():
             "data": base64.b64encode(b"base-avatar-bytes").decode("ascii"),
             "open_mouth_data": base64.b64encode(b"base-avatar-bytes-open").decode("ascii"),
         }
-        mock_conversation.set_base_photo.assert_called_once_with(photo_bytes=b"photo-bytes", content_type="image/png")
+        mock_conversation.set_base_photo.assert_called_once_with(
+            photo_bytes=b"photo-bytes", content_type="image/png", template_id=None
+        )
+
+
+def test_websocket_avatar_photo_forwards_a_verified_template_id():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+        mock_conversation.set_base_photo = MagicMock(return_value=(b"a", b"b"))
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="", attributes=[]), None, None)
+        )
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json(
+                {
+                    "type": "avatar_photo",
+                    "data": base64.b64encode(b"photo-bytes").decode("ascii"),
+                    "template_id": "female_manga_mood",
+                }
+            )
+            websocket.receive_json()
+            websocket.send_json({"type": "finish"})
+
+        mock_conversation.set_base_photo.assert_called_once_with(
+            photo_bytes=b"photo-bytes", content_type="image/png", template_id="female_manga_mood"
+        )
+
+
+def test_websocket_avatar_photo_ignores_an_unverified_template_id():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+        mock_conversation.set_base_photo = MagicMock(return_value=(b"a", b"b"))
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="", attributes=[]), None, None)
+        )
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json(
+                {
+                    "type": "avatar_photo",
+                    "data": base64.b64encode(b"photo-bytes").decode("ascii"),
+                    "template_id": "made_up_template",
+                }
+            )
+            websocket.receive_json()
+            websocket.send_json({"type": "finish"})
+
+        mock_conversation.set_base_photo.assert_called_once_with(
+            photo_bytes=b"photo-bytes", content_type="image/png", template_id=None
+        )
+
+
+def test_websocket_forwards_a_verified_voice_name_from_the_query_string():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse?voice=Kore"):
+            pass
+
+        mock_conversation.start.assert_called_once_with(voice_name="Kore")
+
+
+def test_websocket_ignores_an_unverified_voice_name_from_the_query_string():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse?voice=not-a-real-voice"):
+            pass
+
+        mock_conversation.start.assert_called_once_with(voice_name=None)
 
 
 def test_websocket_avatar_photo_flow_survives_youcam_failure():

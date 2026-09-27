@@ -65,6 +65,13 @@ SYSTEM_PROMPT = """\
 一つずつ掘り下げてください。
 """
 
+# Names confirmed present in google-genai==2.23.0's own Live API test
+# fixtures (google/genai/tests/live/test_live.py) — PrebuiltVoiceConfig
+# doesn't expose a client-side enum, so this is the only source of ground
+# truth found so far. Add a name only after confirming it against the
+# real API.
+VOICE_NAMES = ("Puck", "Charon", "Kore", "Leda")
+
 
 class LiveConversation:
     def __init__(self, genai_client):
@@ -76,15 +83,31 @@ class LiveConversation:
         self._base_avatar_image_open: bytes | None = None
         self._base_avatar_content_type: str | None = None
 
-    async def start(self) -> None:
+    async def start(self, voice_name: str | None = None) -> None:
+        """voice_name selects a prebuilt Live API voice (see
+        VOICE_NAMES — the only names confirmed present in the installed
+        google-genai SDK's own test fixtures; PrebuiltVoiceConfig.voice_name
+        is an unvalidated plain str, so an unconfirmed name would be sent
+        as-is and fail server-side rather than client-side. Whether
+        gemini-live-2.5-flash-native-audio actually honors this field
+        (vs. a half-cascade model) is NOT yet empirically verified — if a
+        chosen voice appears to have no effect, that's the first thing to
+        check, per this file's own verify-against-the-real-API practice."""
+        config_kwargs = dict(
+            response_modalities=["AUDIO"],
+            system_instruction=SYSTEM_PROMPT,
+            output_audio_transcription={},
+            input_audio_transcription={},
+        )
+        if voice_name:
+            config_kwargs["speech_config"] = types.SpeechConfig(
+                voice_config=types.VoiceConfig(
+                    prebuilt_voice_config=types.PrebuiltVoiceConfig(voice_name=voice_name)
+                )
+            )
         self._session_ctx = self.genai_client.aio.live.connect(
             model="gemini-live-2.5-flash-native-audio",
-            config=types.LiveConnectConfig(
-                response_modalities=["AUDIO"],
-                system_instruction=SYSTEM_PROMPT,
-                output_audio_transcription={},
-                input_audio_transcription={},
-            ),
+            config=types.LiveConnectConfig(**config_kwargs),
         )
         self._session = await self._session_ctx.__aenter__()
 
@@ -119,14 +142,24 @@ class LiveConversation:
                     self._transcript_parts.append(f"ユーザー: {user_text}")
                 yield audio_bytes, transcript_text
 
-    def set_base_photo(self, photo_bytes: bytes, content_type: str) -> tuple[bytes, bytes]:
+    def set_base_photo(
+        self, photo_bytes: bytes, content_type: str, template_id: str | None = None
+    ) -> tuple[bytes, bytes]:
         """Runs the user's uploaded photo through YouCam once to produce a
         personalized base avatar, then generates a mouth-open variant of
         that SAME character so the frontend's talking animation doesn't
         fall back to a generic stock image. Stores both for the
         finish()-time Nano Banana edit and returns both so the caller can
-        show them immediately."""
-        image_bytes, image_content_type = generate_base_avatar(photo_bytes=photo_bytes, content_type=content_type)
+        show them immediately.
+
+        template_id selects the YouCam avatar style; None uses
+        generate_base_avatar's own default. Only pass values already
+        confirmed against the real API (see youcam_client.VERIFIED_TEMPLATE_IDS)
+        — an unverified template_id string returns a 400 from YouCam."""
+        kwargs = {"photo_bytes": photo_bytes, "content_type": content_type}
+        if template_id is not None:
+            kwargs["template_id"] = template_id
+        image_bytes, image_content_type = generate_base_avatar(**kwargs)
         open_mouth_bytes = generate_open_mouth_variant(
             base_image_bytes=image_bytes, genai_client=self.genai_client, mime_type=image_content_type
         )

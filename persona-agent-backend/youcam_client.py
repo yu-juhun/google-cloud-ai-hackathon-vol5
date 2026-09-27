@@ -20,6 +20,14 @@ BASE_URL = "https://yce-api-01.makeupar.com"
 POLL_INTERVAL_SECONDS = 3
 MAX_POLL_ATTEMPTS = 40
 
+# template_id values confirmed against the real /s2s/v2.0/task/ai-avatar
+# endpoint (2026-09-27): "female_manga_mood" returns 200; the symmetric
+# guess "male_manga_mood" returns 400 InvalidTemplate — template names are
+# NOT a simple <gender>_<style>_<mood> pattern, so do not guess new values.
+# Add to this set only after confirming a new template_id against the live
+# API the same way (see this file's generate_base_avatar docstring).
+VERIFIED_TEMPLATE_IDS = {"female_manga_mood"}
+
 
 def _get_access_token() -> str:
     client_id = os.environ["PERFECTCORP_API_KEY"]

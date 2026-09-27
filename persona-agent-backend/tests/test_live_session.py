@@ -53,6 +53,26 @@ def test_set_base_photo_calls_youcam_and_generates_open_mouth_variant(monkeypatc
     assert conversation._base_avatar_content_type == "image/jpeg"
 
 
+def test_set_base_photo_forwards_template_id_when_given(monkeypatch):
+    import live_session
+
+    captured = {}
+
+    def fake_generate_base_avatar(photo_bytes, content_type, template_id=None):
+        captured["template_id"] = template_id
+        return b"youcam-avatar-bytes", "image/jpeg"
+
+    monkeypatch.setattr(live_session, "generate_base_avatar", fake_generate_base_avatar)
+    monkeypatch.setattr(
+        live_session, "generate_open_mouth_variant", lambda base_image_bytes, genai_client, mime_type: b"open"
+    )
+
+    conversation = live_session.LiveConversation(genai_client=MagicMock())
+    conversation.set_base_photo(photo_bytes=b"raw-photo", content_type="image/png", template_id="female_manga_mood")
+
+    assert captured["template_id"] == "female_manga_mood"
+
+
 @pytest.mark.asyncio
 async def test_finish_returns_persona_and_evolved_avatars(monkeypatch):
     import live_session
@@ -214,6 +234,32 @@ async def test_start_connects_with_the_expected_model_and_stores_the_session():
     assert conversation._session_ctx is fake_ctx
     call_kwargs = fake_client.aio.live.connect.call_args.kwargs
     assert call_kwargs["model"] == "gemini-live-2.5-flash-native-audio"
+    assert call_kwargs["config"].speech_config is None
+
+
+@pytest.mark.asyncio
+async def test_start_with_voice_name_sets_the_prebuilt_voice_config():
+    fake_client = MagicMock()
+    fake_client.aio.live.connect.return_value = _FakeSessionContext(MagicMock())
+
+    conversation = LiveConversation(genai_client=fake_client)
+    await conversation.start(voice_name="Kore")
+
+    call_kwargs = fake_client.aio.live.connect.call_args.kwargs
+    speech_config = call_kwargs["config"].speech_config
+    assert speech_config.voice_config.prebuilt_voice_config.voice_name == "Kore"
+
+
+@pytest.mark.asyncio
+async def test_start_without_voice_name_omits_speech_config():
+    fake_client = MagicMock()
+    fake_client.aio.live.connect.return_value = _FakeSessionContext(MagicMock())
+
+    conversation = LiveConversation(genai_client=fake_client)
+    await conversation.start(voice_name=None)
+
+    call_kwargs = fake_client.aio.live.connect.call_args.kwargs
+    assert call_kwargs["config"].speech_config is None
 
 
 @pytest.mark.asyncio

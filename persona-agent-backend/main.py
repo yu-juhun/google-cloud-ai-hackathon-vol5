@@ -6,7 +6,8 @@ import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google import genai
 
-from live_session import LiveConversation
+from live_session import VOICE_NAMES, LiveConversation
+from youcam_client import VERIFIED_TEMPLATE_IDS
 
 app = FastAPI(title="persona-agent-backend")
 logger = logging.getLogger(__name__)
@@ -44,11 +45,15 @@ async def _relay_model_audio(websocket: WebSocket, conversation: LiveConversatio
 async def converse(websocket: WebSocket) -> None:
     await websocket.accept()
     conversation = LiveConversation(genai_client=_build_genai_client())
+    # Voice is chosen before the Live session exists, so it travels as a
+    # connect-time query param rather than a WebSocket message.
+    requested_voice = websocket.query_params.get("voice")
+    voice_name = requested_voice if requested_voice in VOICE_NAMES else None
     try:
         # A startup failure (bad Vertex credentials, an unavailable Live
-        # API model) must reach the client as a message, not just a
-        # closed connection with no explanation.
-        await conversation.start()
+        # API model, or an unsupported voice_name) must reach the client
+        # as a message, not just a closed connection with no explanation.
+        await conversation.start(voice_name=voice_name)
     except Exception as e:
         await websocket.send_json({"type": "start_error", "message": str(e)})
         await websocket.close()
@@ -96,13 +101,23 @@ async def converse(websocket: WebSocket) -> None:
                     await websocket.send_json({"type": "avatar_error", "message": str(e)})
                     continue
                 content_type = message.get("content_type", "image/png")
+                requested_template_id = message.get("template_id")
+                # Silently fall back to the default rather than forwarding
+                # an unverified template_id to YouCam (that's a real, paid
+                # API call away from a 400) — the client is untrusted input.
+                template_id = (
+                    requested_template_id if requested_template_id in VERIFIED_TEMPLATE_IDS else None
+                )
                 try:
                     # set_base_photo calls YouCam synchronously (it can
                     # block for up to ~120s), so run it in a worker thread
                     # rather than blocking the event loop that this same
                     # connection's relay_task needs to keep relaying audio.
                     base_image, base_image_open = await asyncio.to_thread(
-                        conversation.set_base_photo, photo_bytes=photo_bytes, content_type=content_type
+                        conversation.set_base_photo,
+                        photo_bytes=photo_bytes,
+                        content_type=content_type,
+                        template_id=template_id,
                     )
                 except Exception as e:
                     # A YouCam failure (bad credentials, no face detected,
