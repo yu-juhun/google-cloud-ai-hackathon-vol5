@@ -150,6 +150,42 @@ describe("PersonaSocket", () => {
     expect(typeof sent.data).toBe("string");
   });
 
+  it("includes template_id in avatar_photo when given", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    socket.connect();
+    const photo = new Uint8Array([9, 9, 9]).buffer;
+
+    socket.sendAvatarPhoto(photo, "image/png", "female_manga_mood");
+
+    const sent = JSON.parse(FakeWebSocket.instances[0].sent[0]);
+    expect(sent.template_id).toBe("female_manga_mood");
+  });
+
+  it("omits template_id from avatar_photo when not given", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    socket.connect();
+    const photo = new Uint8Array([9, 9, 9]).buffer;
+
+    socket.sendAvatarPhoto(photo, "image/png");
+
+    const sent = JSON.parse(FakeWebSocket.instances[0].sent[0]);
+    expect("template_id" in sent).toBe(false);
+  });
+
+  it("appends the voice as a query param on the connecting URL", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    socket.connect("Kore");
+
+    expect(FakeWebSocket.instances[0].url).toBe("wss://example.test/ws/converse?voice=Kore");
+  });
+
+  it("connects without a query param when no voice is given", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    socket.connect();
+
+    expect(FakeWebSocket.instances[0].url).toBe("wss://example.test/ws/converse");
+  });
+
   it("calls onAvatarBaseImage when an avatar_base_image message arrives", () => {
     const socket = new PersonaSocket("wss://example.test/ws/converse");
     const onAvatarBaseImage = vi.fn();

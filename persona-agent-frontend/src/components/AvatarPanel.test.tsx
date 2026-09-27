@@ -139,6 +139,35 @@ describe("AvatarPanel", () => {
     expect(contentType).toBe("image/png");
   });
 
+  it("sends the selected template_id along with the photo", async () => {
+    const socket = new PersonaSocket("wss://example.test");
+    socket.sendAvatarPhoto = vi.fn();
+    render(<AvatarPanel socket={socket} />);
+
+    fireEvent.change(screen.getByLabelText("アバターのスタイル"), { target: { value: "female_manga_mood" } });
+    const file = new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" });
+    const input = screen.getByLabelText("顔写真をアップロード") as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+    });
+
+    const [, , templateId] = (socket.sendAvatarPhoto as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(templateId).toBe("female_manga_mood");
+  });
+
+  it("connects with the selected voice when starting the conversation", async () => {
+    const socket = new PersonaSocket("wss://example.test");
+    socket.connect = vi.fn().mockResolvedValue(undefined);
+    render(<AvatarPanel socket={socket} />);
+
+    fireEvent.change(screen.getByLabelText("声を選ぶ"), { target: { value: "Kore" } });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "話しかける" }));
+    });
+
+    expect(socket.connect).toHaveBeenCalledWith("Kore");
+  });
+
   it("shows the avatar_error message", () => {
     const socket = new PersonaSocket("wss://example.test");
     render(<AvatarPanel socket={socket} />);

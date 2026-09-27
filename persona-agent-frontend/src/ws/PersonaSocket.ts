@@ -53,8 +53,14 @@ export class PersonaSocket {
   /** Resolves once the socket has actually reached OPEN. Callers that need
    * to start sending immediately after connecting (e.g. mic capture) must
    * await this — sending while the socket is still CONNECTING throws
-   * InvalidStateError, silently dropping audio chunks sent too early. */
-  connect(): Promise<void> {
+   * InvalidStateError, silently dropping audio chunks sent too early.
+   *
+   * voiceName, if given, is only used on the FIRST call that actually
+   * opens the socket (voice must be chosen before the Live session
+   * exists server-side, so it travels as a connect-time query param —
+   * a later connect() call on an already-open/connecting socket is a
+   * no-op and can't retroactively change it). */
+  connect(voiceName?: string): Promise<void> {
     if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
     // Without this, a second connect() while the first is still
     // CONNECTING (e.g. clicking 話しかける then immediately picking a
@@ -62,7 +68,8 @@ export class PersonaSocket {
     // one mid-handshake instead of reusing it.
     if (this.connecting) return this.connecting;
     this.connecting = new Promise((resolve, reject) => {
-      const ws = new WebSocket(this.url);
+      const url = voiceName ? `${this.url}?voice=${encodeURIComponent(voiceName)}` : this.url;
+      const ws = new WebSocket(url);
       this.ws = ws;
       ws.onopen = () => {
         this.connecting = null;
@@ -101,10 +108,15 @@ export class PersonaSocket {
     this.ws.send(JSON.stringify({ type: "audio_chunk", data: arrayBufferToBase64(chunk) }));
   }
 
-  sendAvatarPhoto(photo: ArrayBuffer, contentType: string): void {
+  sendAvatarPhoto(photo: ArrayBuffer, contentType: string, templateId?: string): void {
     if (this.ws?.readyState !== WebSocket.OPEN) return;
     this.ws.send(
-      JSON.stringify({ type: "avatar_photo", data: arrayBufferToBase64(photo), content_type: contentType }),
+      JSON.stringify({
+        type: "avatar_photo",
+        data: arrayBufferToBase64(photo),
+        content_type: contentType,
+        ...(templateId ? { template_id: templateId } : {}),
+      }),
     );
   }
 

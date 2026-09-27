@@ -2,6 +2,24 @@ import { useEffect, useRef, useState } from "react";
 import { PersonaSocket, Persona } from "../ws/PersonaSocket";
 import { startMicCapture, MicCapture, rmsVolume } from "../audio/micCapture";
 import { createAudioPlayback, AudioPlayback } from "../audio/audioPlayback";
+import "./AvatarPanel.css";
+
+// Only options verified against the real APIs (see youcam_client.py's
+// VERIFIED_TEMPLATE_IDS / live_session.py's VOICE_NAMES on the backend,
+// which independently re-validate these — this list is a UI convenience,
+// not the source of truth). Empty string means "let the backend default
+// apply" for both.
+const TEMPLATE_OPTIONS = [
+  { value: "", label: "おまかせ（既定）" },
+  { value: "female_manga_mood", label: "マンガ風" },
+];
+const VOICE_OPTIONS = [
+  { value: "", label: "おまかせ（既定の声）" },
+  { value: "Puck", label: "Puck" },
+  { value: "Charon", label: "Charon" },
+  { value: "Kore", label: "Kore" },
+  { value: "Leda", label: "Leda" },
+];
 
 export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [mouthOpen, setMouthOpen] = useState(false);
@@ -10,6 +28,8 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [baseAvatarImage, setBaseAvatarImage] = useState<string | null>(null);
   const [baseAvatarImageOpen, setBaseAvatarImageOpen] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [templateId, setTemplateId] = useState("");
+  const [voiceName, setVoiceName] = useState("");
   const playbackRef = useRef<AudioPlayback | null>(null);
   const captureRef = useRef<MicCapture | null>(null);
   const resultReceivedRef = useRef(false);
@@ -57,7 +77,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
 
   const handleStart = async () => {
     try {
-      await socket.connect();
+      await socket.connect(voiceName || undefined);
       const mic = await startMicCapture(
         (chunk) => socket.sendAudioChunk(chunk),
         () => {},
@@ -83,8 +103,8 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     if (!file) return;
     try {
       const buffer = await file.arrayBuffer();
-      await socket.connect();
-      socket.sendAvatarPhoto(buffer, file.type);
+      await socket.connect(voiceName || undefined);
+      socket.sendAvatarPhoto(buffer, file.type, templateId || undefined);
     } catch (e) {
       setErrorMessage(`アバター写真の処理に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     }
@@ -103,26 +123,78 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
       : "/avatar-default-open.png";
 
   return (
-    <div>
-      <label>
-        顔写真をアップロード
-        <input type="file" accept="image/*" onChange={handlePhotoChange} />
-      </label>
-      <img src={mouthOpen ? openSrc : closedSrc} alt="アバター" width={200} height={200} />
-      <button onClick={handleStart}>話しかける</button>
-      <button onClick={handleFinish}>完了</button>
-      {errorMessage && <p role="alert">{errorMessage}</p>}
+    <div className="avatar-panel">
+      <header className="avatar-panel__header">
+        <h1 className="avatar-panel__title">ペルソナ・インテイクエージェント</h1>
+      </header>
+
+      <section className="avatar-panel__avatar-card">
+        <img
+          className="avatar-panel__avatar-image"
+          src={mouthOpen ? openSrc : closedSrc}
+          alt="アバター"
+          width={200}
+          height={200}
+        />
+        <label className="avatar-panel__upload">
+          <span>顔写真をアップロード</span>
+          <input type="file" accept="image/*" onChange={handlePhotoChange} />
+        </label>
+      </section>
+
+      <section className="avatar-panel__options">
+        <label className="avatar-panel__option">
+          <span>アバターのスタイル</span>
+          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+            {TEMPLATE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="avatar-panel__option">
+          <span>声を選ぶ</span>
+          <select value={voiceName} onChange={(e) => setVoiceName(e.target.value)}>
+            {VOICE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
+
+      <section className="avatar-panel__controls">
+        <button className="avatar-panel__button avatar-panel__button--primary" onClick={handleStart}>
+          話しかける
+        </button>
+        <button className="avatar-panel__button avatar-panel__button--secondary" onClick={handleFinish}>
+          完了
+        </button>
+      </section>
+
+      {errorMessage && (
+        <p className="avatar-panel__error" role="alert">
+          {errorMessage}
+        </p>
+      )}
+
       {persona && (
-        <div>
-          <p>{persona.raw_summary}</p>
-          <ul>
+        <section className="avatar-panel__result">
+          <p className="avatar-panel__summary">{persona.raw_summary}</p>
+          <ul className="avatar-panel__attributes">
             {persona.attributes.map((attr, i) => (
-              <li key={i}>
-                {attr.category}: {attr.description} ({attr.inferred_keywords.join(", ")})
+              <li key={i} className="avatar-panel__attribute">
+                <span className="avatar-panel__attribute-category">{attr.category}</span>
+                <span className="avatar-panel__attribute-description">{attr.description}</span>
+                {attr.inferred_keywords.length > 0 && (
+                  <span className="avatar-panel__attribute-keywords">{attr.inferred_keywords.join(", ")}</span>
+                )}
               </li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
     </div>
   );
