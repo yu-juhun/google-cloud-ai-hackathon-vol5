@@ -131,3 +131,43 @@ def test_extract_persona_falls_back_to_order_based_ranks_if_retry_still_invalid(
 
     assert [a.rank for a in persona.attributes] == [1, 2]
     assert fake_client.models.generate_content.call_count == 2
+
+
+def test_extract_persona_skips_attribute_missing_a_required_field():
+    fake_response = MagicMock()
+    fake_response.text = json.dumps(
+        {
+            "raw_summary": "s",
+            "attributes": [
+                {"domain": "mobility", "category": "a", "description": "d1", "rank": 1, "confidence": "high"},
+                {"domain": "dietary", "category": "b", "description": "d2", "confidence": "medium"},  # missing rank
+            ],
+        }
+    )
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = fake_response
+
+    persona = extract_persona(transcript="test transcript", genai_client=fake_client)
+
+    assert len(persona.attributes) == 1
+    assert persona.attributes[0].category == "a"
+
+
+def test_extract_persona_skips_attribute_with_invalid_domain():
+    fake_response = MagicMock()
+    fake_response.text = json.dumps(
+        {
+            "raw_summary": "s",
+            "attributes": [
+                {"domain": "mobility", "category": "a", "description": "d1", "rank": 1, "confidence": "high"},
+                {"domain": "not_a_real_domain", "category": "b", "description": "d2", "rank": 2, "confidence": "high"},
+            ],
+        }
+    )
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = fake_response
+
+    persona = extract_persona(transcript="test transcript", genai_client=fake_client)
+
+    assert len(persona.attributes) == 1
+    assert persona.attributes[0].category == "a"

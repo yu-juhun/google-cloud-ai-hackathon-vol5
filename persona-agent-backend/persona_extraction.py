@@ -3,6 +3,7 @@ import logging
 import uuid
 
 from google.genai import types
+from pydantic import ValidationError
 
 from persona_validator import validate_persona
 from schemas import Attribute, Persona
@@ -45,16 +46,23 @@ def _call_gemini(prompt: str, genai_client):
 
 
 def _build_persona(parsed: dict) -> Persona:
-    attributes = [
-        Attribute(
-            domain=a["domain"],
-            category=a["category"],
-            description=a["description"],
-            rank=a["rank"],
-            confidence=a["confidence"],
-        )
-        for a in parsed.get("attributes", [])
-    ]
+    attributes = []
+    for a in parsed.get("attributes", []):
+        try:
+            attributes.append(
+                Attribute(
+                    domain=a["domain"],
+                    category=a["category"],
+                    description=a["description"],
+                    rank=a["rank"],
+                    confidence=a["confidence"],
+                )
+            )
+        except (KeyError, ValidationError) as e:
+            # A single malformed attribute (missing field, invalid domain/
+            # confidence value) must not lose the whole persona result —
+            # skip just that one and keep the rest.
+            logger.warning("skipping malformed attribute %r: %s", a, e)
 
     return Persona(
         persona_id=str(uuid.uuid4()),
