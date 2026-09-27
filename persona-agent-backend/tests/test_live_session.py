@@ -106,3 +106,83 @@ async def test_finish_with_no_photo_evolves_the_default_avatar(monkeypatch):
 
     assert avatar_bytes == b"evolved-default-closed"
     assert avatar_bytes_open == b"evolved-default-open"
+
+
+class _FakeTranscriptMessage:
+    def __init__(self, data=None, output_text=None, input_text=None):
+        self.data = data
+        if output_text is not None or input_text is not None:
+            server_content = MagicMock()
+            server_content.output_transcription = MagicMock(text=output_text) if output_text is not None else None
+            server_content.input_transcription = MagicMock(text=input_text) if input_text is not None else None
+            self.server_content = server_content
+        else:
+            self.server_content = None
+
+
+class _FakeLiveSession:
+    """A fake matching the real session's per-turn receive() shape: each
+    call returns a fresh async generator covering exactly one turn (see
+    receive_audio_chunks's own docstring on why the real SDK behaves this
+    way)."""
+
+    def __init__(self, turns):
+        self._turns = turns
+        self._call_count = 0
+
+    async def receive(self):
+        turn = self._turns[self._call_count]
+        self._call_count += 1
+        for message in turn:
+            yield message
+
+
+@pytest.mark.asyncio
+async def test_receive_audio_chunks_yields_audio_and_appends_model_transcript():
+    conversation = LiveConversation(genai_client=MagicMock())
+    conversation._session = _FakeLiveSession([[_FakeTranscriptMessage(data=b"audio-out", output_text="こんにちは")]])
+
+    gen = conversation.receive_audio_chunks()
+    try:
+        results = [await gen.__anext__()]
+    finally:
+        await gen.aclose()
+
+    assert results == [(b"audio-out", "こんにちは")]
+    assert conversation._transcript_parts == ["モデル: こんにちは"]
+
+
+@pytest.mark.asyncio
+async def test_receive_audio_chunks_appends_user_transcript():
+    conversation = LiveConversation(genai_client=MagicMock())
+    conversation._session = _FakeLiveSession([[_FakeTranscriptMessage(input_text="車椅子を使っています")]])
+
+    gen = conversation.receive_audio_chunks()
+    try:
+        results = [await gen.__anext__()]
+    finally:
+        await gen.aclose()
+
+    assert results == [(None, None)]
+    assert conversation._transcript_parts == ["ユーザー: 車椅子を使っています"]
+
+
+@pytest.mark.asyncio
+async def test_receive_audio_chunks_calls_receive_again_for_the_next_turn():
+    conversation = LiveConversation(genai_client=MagicMock())
+    conversation._session = _FakeLiveSession(
+        [
+            [_FakeTranscriptMessage(output_text="ターン1")],
+            [_FakeTranscriptMessage(output_text="ターン2")],
+        ]
+    )
+
+    gen = conversation.receive_audio_chunks()
+    try:
+        results = [await gen.__anext__(), await gen.__anext__()]
+    finally:
+        await gen.aclose()
+
+    assert results == [(None, "ターン1"), (None, "ターン2")]
+    assert conversation._transcript_parts == ["モデル: ターン1", "モデル: ターン2"]
+    assert conversation._session._call_count == 2
