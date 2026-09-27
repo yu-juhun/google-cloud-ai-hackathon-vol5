@@ -42,6 +42,6 @@ sources:
 
 `rank`/`confidence` の意味と一意性保証は、v1/v2実装当時はプロンプト文言としてのみ存在し、
 コードでの検証も他エージェント向けの明文化もされていなかった。アバター画像の視覚化ポリシー
-(`docs/wiki/concepts/`配下の別途整理予定、`avatar_policy.py`参照)と合わせて、persona-avatar v3
+([avatar-visualization-policy](./avatar-visualization-policy.md) 参照)と合わせて、persona-avatar v3
 設計([`2026-09-27-persona-avatar-v3-design.md`](../../superpowers/specs/2026-09-27-persona-avatar-v3-design.md))
 で構造的な保証として追加した。
