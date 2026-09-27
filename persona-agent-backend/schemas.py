@@ -26,3 +26,4 @@ class Persona(BaseModel):
     persona_id: str
     raw_summary: str
     attributes: list[Attribute] = Field(default_factory=list)
+    schema_version: str = "2"

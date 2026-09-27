@@ -81,3 +81,53 @@ def test_extract_persona_produces_unique_ranks():
     assert ranks == sorted(ranks)
     assert len(set(ranks)) == len(ranks)
     assert all(a.domain in ("mobility", "dietary", "purpose", "companions", "language", "background", "other") for a in persona.attributes)
+
+
+def test_extract_persona_retries_once_on_duplicate_ranks():
+    bad_response = MagicMock()
+    bad_response.text = json.dumps(
+        {
+            "raw_summary": "s",
+            "attributes": [
+                {"domain": "mobility", "category": "a", "description": "d1", "rank": 1, "confidence": "high"},
+                {"domain": "dietary", "category": "b", "description": "d2", "rank": 1, "confidence": "medium"},
+            ],
+        }
+    )
+    good_response = MagicMock()
+    good_response.text = json.dumps(
+        {
+            "raw_summary": "s",
+            "attributes": [
+                {"domain": "mobility", "category": "a", "description": "d1", "rank": 1, "confidence": "high"},
+                {"domain": "dietary", "category": "b", "description": "d2", "rank": 2, "confidence": "medium"},
+            ],
+        }
+    )
+    fake_client = MagicMock()
+    fake_client.models.generate_content.side_effect = [bad_response, good_response]
+
+    persona = extract_persona(transcript="test transcript", genai_client=fake_client)
+
+    assert [a.rank for a in persona.attributes] == [1, 2]
+    assert fake_client.models.generate_content.call_count == 2
+
+
+def test_extract_persona_falls_back_to_order_based_ranks_if_retry_still_invalid():
+    bad_response = MagicMock()
+    bad_response.text = json.dumps(
+        {
+            "raw_summary": "s",
+            "attributes": [
+                {"domain": "mobility", "category": "a", "description": "d1", "rank": 1, "confidence": "high"},
+                {"domain": "dietary", "category": "b", "description": "d2", "rank": 1, "confidence": "medium"},
+            ],
+        }
+    )
+    fake_client = MagicMock()
+    fake_client.models.generate_content.side_effect = [bad_response, bad_response]
+
+    persona = extract_persona(transcript="test transcript", genai_client=fake_client)
+
+    assert [a.rank for a in persona.attributes] == [1, 2]
+    assert fake_client.models.generate_content.call_count == 2

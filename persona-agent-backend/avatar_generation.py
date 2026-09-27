@@ -1,5 +1,6 @@
 from google.genai import types
 
+from avatar_policy import build_edit_instructions, select_visual_attributes
 from schemas import Persona
 
 EDIT_PROMPT_TEMPLATE = """\
@@ -39,12 +40,16 @@ def generate_open_mouth_variant(base_image_bytes: bytes, genai_client, mime_type
 def evolve_avatar(base_image_bytes: bytes, persona: Persona, genai_client, mime_type: str = "image/jpeg") -> bytes:
     """Edits the base avatar image to reflect the persona's attributes,
     preserving character identity (see the v2 design spec's verified
-    Nano Banana consistency behavior). Returns the base image unchanged
-    if there are no attributes to reflect yet, without calling Gemini."""
-    if not persona.attributes:
+    Nano Banana consistency behavior). Only attributes allowed by
+    avatar_policy (domain allowlist, confidence >= medium) may influence
+    the appearance (see the v3 design spec's "トラックB"). Returns the
+    base image unchanged if there's nothing visualizable, without
+    calling Gemini."""
+    visual_attributes = select_visual_attributes(persona)
+    attribute_lines = build_edit_instructions(visual_attributes)
+    if not attribute_lines:
         return base_image_bytes
 
-    attribute_lines = "\n".join(f"- {a.category}: {a.description}" for a in persona.attributes)
     prompt = EDIT_PROMPT_TEMPLATE.format(attribute_lines=attribute_lines)
 
     response = genai_client.models.generate_content(

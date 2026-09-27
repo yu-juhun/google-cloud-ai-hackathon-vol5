@@ -1,9 +1,13 @@
 import json
+import logging
 import uuid
 
 from google.genai import types
 
+from persona_validator import validate_persona
 from schemas import Attribute, Persona
+
+logger = logging.getLogger(__name__)
 
 EXTRACTION_PROMPT = """\
 あなたは、旅行・外食のプランニングを支援するために、ユーザーとの対話ログから
@@ -31,15 +35,16 @@ EXTRACTION_PROMPT = """\
 """
 
 
-def extract_persona(transcript: str, genai_client) -> Persona:
-    prompt = EXTRACTION_PROMPT.format(transcript=transcript)
+def _call_gemini(prompt: str, genai_client):
     response = genai_client.models.generate_content(
         model="gemini-2.5-flash",
         contents=prompt,
         config=types.GenerateContentConfig(response_mime_type="application/json"),
     )
-    parsed = json.loads(response.text)
+    return json.loads(response.text)
 
+
+def _build_persona(parsed: dict) -> Persona:
     attributes = [
         Attribute(
             domain=a["domain"],
@@ -56,3 +61,36 @@ def extract_persona(transcript: str, genai_client) -> Persona:
         raw_summary=parsed.get("raw_summary", ""),
         attributes=attributes,
     )
+
+
+def _reassign_ranks_by_order(persona: Persona) -> Persona:
+    for i, attribute in enumerate(persona.attributes, start=1):
+        attribute.rank = i
+    return persona
+
+
+def extract_persona(transcript: str, genai_client) -> Persona:
+    prompt = EXTRACTION_PROMPT.format(transcript=transcript)
+    parsed = _call_gemini(prompt, genai_client)
+    persona = _build_persona(parsed)
+
+    violations = validate_persona(persona)
+    if not violations:
+        return persona
+
+    retry_prompt = (
+        f"{prompt}\n\n前回の出力には次の問題がありました。修正して出力し直してください:\n"
+        + "\n".join(f"- {v}" for v in violations)
+    )
+    parsed = _call_gemini(retry_prompt, genai_client)
+    persona = _build_persona(parsed)
+
+    violations = validate_persona(persona)
+    if violations:
+        logger.warning(
+            "persona validation failed after retry (%s); falling back to order-based ranks",
+            violations,
+        )
+        persona = _reassign_ranks_by_order(persona)
+
+    return persona

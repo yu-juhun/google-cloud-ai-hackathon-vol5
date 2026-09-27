@@ -49,6 +49,7 @@ def test_websocket_finish_flow_calls_live_conversation():
                 "persona_id": "test-id",
                 "raw_summary": "要約",
                 "attributes": [],
+                "schema_version": "2",
                 "avatar_image": base64.b64encode(b"avatar-bytes").decode("ascii"),
                 "avatar_image_open": base64.b64encode(b"avatar-bytes-open").decode("ascii"),
             },
