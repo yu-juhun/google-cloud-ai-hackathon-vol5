@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { PersonaSocket, Persona, AvatarTemplate } from "../ws/PersonaSocket";
 import { startMicCapture, MicCapture, rmsVolume } from "../audio/micCapture";
 import { createAudioPlayback, AudioPlayback } from "../audio/audioPlayback";
+import { Button, Card, Select, Alert, SelectOption } from "../ui";
 import "./AvatarPanel.css";
 
 // Only the 4 voice names confirmed present in the installed google-genai
@@ -126,14 +127,17 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     }
   };
 
-  const availableGenders = useMemo(
-    () => Array.from(new Set(templates.map((t) => t.gender).filter(Boolean))),
-    [templates],
-  );
-  const stylesForGender = useMemo(
-    () => templates.filter((t) => !gender || t.gender === gender),
-    [templates, gender],
-  );
+  const genderOptions: SelectOption[] = useMemo(() => {
+    const genders = Array.from(new Set(templates.map((t) => t.gender).filter(Boolean)));
+    return [{ value: "", label: "おまかせ（既定）" }, ...genders.map((g) => ({ value: g, label: GENDER_LABELS[g] ?? g }))];
+  }, [templates]);
+  const styleOptions: SelectOption[] = useMemo(() => {
+    const styles = templates.filter((t) => !gender || t.gender === gender);
+    return [
+      { value: "", label: "おまかせ（既定）" },
+      ...styles.map((t) => ({ value: t.id, label: `${t.category} - ${t.title}` })),
+    ];
+  }, [templates, gender]);
 
   const handleGenderChange = (value: string) => {
     setGender(value);
@@ -161,7 +165,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
         <h1 className="avatar-panel__title">ペルソナ・インテイクエージェント</h1>
       </header>
 
-      <section className="avatar-panel__avatar-card">
+      <Card className="avatar-panel__avatar-card">
         <img
           className="avatar-panel__avatar-image"
           src={mouthOpen ? openSrc : closedSrc}
@@ -173,60 +177,33 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
           <span>顔写真をアップロード</span>
           <input type="file" accept="image/*" onChange={handlePhotoChange} />
         </label>
-      </section>
+      </Card>
 
       <section className="avatar-panel__options">
-        <label className="avatar-panel__option">
-          <span>性別</span>
-          <select value={gender} onChange={(e) => handleGenderChange(e.target.value)}>
-            <option value="">おまかせ（既定）</option>
-            {availableGenders.map((g) => (
-              <option key={g} value={g}>
-                {GENDER_LABELS[g] ?? g}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="avatar-panel__option">
-          <span>アバターのスタイル</span>
-          <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} disabled={templates.length === 0}>
-            <option value="">おまかせ（既定）</option>
-            {stylesForGender.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.category} - {t.title}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="avatar-panel__option">
-          <span>声を選ぶ</span>
-          <select value={voiceName} onChange={(e) => setVoiceName(e.target.value)}>
-            {VOICE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select label="性別" value={gender} onChange={(e) => handleGenderChange(e.target.value)} options={genderOptions} />
+        <Select
+          label="アバターのスタイル"
+          value={templateId}
+          onChange={(e) => setTemplateId(e.target.value)}
+          options={styleOptions}
+          disabled={templates.length === 0}
+        />
+        <Select label="声を選ぶ" value={voiceName} onChange={(e) => setVoiceName(e.target.value)} options={VOICE_OPTIONS} />
       </section>
 
       <section className="avatar-panel__controls">
-        <button className="avatar-panel__button avatar-panel__button--primary" onClick={handleStart}>
+        <Button variant="primary" onClick={handleStart}>
           話しかける
-        </button>
-        <button className="avatar-panel__button avatar-panel__button--secondary" onClick={handleFinish}>
+        </Button>
+        <Button variant="secondary" onClick={handleFinish}>
           完了
-        </button>
+        </Button>
       </section>
 
-      {errorMessage && (
-        <p className="avatar-panel__error" role="alert">
-          {errorMessage}
-        </p>
-      )}
+      {errorMessage && <Alert tone="danger">{errorMessage}</Alert>}
 
       {persona && (
-        <section className="avatar-panel__result">
+        <Card className="avatar-panel__result">
           <p className="avatar-panel__summary">{persona.raw_summary}</p>
           <ul className="avatar-panel__attributes">
             {persona.attributes.map((attr, i) => (
@@ -239,7 +216,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
               </li>
             ))}
           </ul>
-        </section>
+        </Card>
       )}
     </div>
   );
