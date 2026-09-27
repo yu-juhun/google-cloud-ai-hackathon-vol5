@@ -31,6 +31,7 @@ describe("AvatarPanel", () => {
         persona_id: "abc",
         raw_summary: "テスト要約",
         attributes: [],
+        schema_version: "2",
         avatar_image: null,
         avatar_image_open: null,
       });
@@ -84,6 +85,7 @@ describe("AvatarPanel", () => {
         persona_id: "abc",
         raw_summary: "テスト要約",
         attributes: [],
+        schema_version: "2",
         avatar_image: "evolved-base64data",
         avatar_image_open: "evolved-open-base64data",
       });

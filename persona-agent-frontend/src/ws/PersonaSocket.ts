@@ -11,6 +11,7 @@ export interface Persona {
   persona_id: string;
   raw_summary: string;
   attributes: PersonaAttribute[];
+  schema_version: string;
   avatar_image: string | null;
   avatar_image_open: string | null;
 }
