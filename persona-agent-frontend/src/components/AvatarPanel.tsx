@@ -45,12 +45,19 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   }, [socket]);
 
   const handleStart = async () => {
-    await socket.connect();
-    const mic = await startMicCapture(
-      (chunk) => socket.sendAudioChunk(chunk),
-      () => {},
-    );
-    setCapture(mic);
+    try {
+      await socket.connect();
+      const mic = await startMicCapture(
+        (chunk) => socket.sendAudioChunk(chunk),
+        () => {},
+      );
+      setCapture(mic);
+    } catch (e) {
+      // A rejected connect() or a denied mic permission would otherwise
+      // be an unhandled promise rejection — the button would just do
+      // nothing with no feedback at all.
+      setErrorMessage(`会話の開始に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
 
   const handleFinish = () => {
@@ -61,9 +68,13 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const handlePhotoChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const buffer = await file.arrayBuffer();
-    await socket.connect();
-    socket.sendAvatarPhoto(buffer, file.type);
+    try {
+      const buffer = await file.arrayBuffer();
+      await socket.connect();
+      socket.sendAvatarPhoto(buffer, file.type);
+    } catch (e) {
+      setErrorMessage(`アバター写真の処理に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
+    }
   };
 
   const closedSrc = persona?.avatar_image

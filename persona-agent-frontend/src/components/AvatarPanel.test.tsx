@@ -22,6 +22,32 @@ describe("AvatarPanel", () => {
     expect(socket.sendFinish).toHaveBeenCalled();
   });
 
+  it("shows an error message if starting the conversation fails", async () => {
+    const socket = new PersonaSocket("wss://example.test");
+    socket.connect = vi.fn().mockRejectedValue(new Error("mic permission denied"));
+    render(<AvatarPanel socket={socket} />);
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "話しかける" }));
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("mic permission denied");
+  });
+
+  it("shows an error message if sending the photo fails", async () => {
+    const socket = new PersonaSocket("wss://example.test");
+    socket.connect = vi.fn().mockRejectedValue(new Error("connection refused"));
+    render(<AvatarPanel socket={socket} />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" });
+    const input = screen.getByLabelText("顔写真をアップロード") as HTMLInputElement;
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } });
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("connection refused");
+  });
+
   it("displays the persona result once onPersonaResult fires", () => {
     const socket = new PersonaSocket("wss://example.test");
     render(<AvatarPanel socket={socket} />);
