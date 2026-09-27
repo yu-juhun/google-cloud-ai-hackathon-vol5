@@ -1,3 +1,4 @@
+import asyncio
 import base64
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -129,6 +130,53 @@ def test_websocket_survives_malformed_audio_chunk_and_still_reaches_finish():
 
         assert data["type"] == "persona_result"
         mock_conversation.send_audio.assert_not_called()
+
+
+def test_websocket_finish_cancels_a_still_running_relay_task():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="", attributes=[]), None, None)
+        )
+
+        async def blocking_receive_audio_chunks():
+            # Never completes on its own — relay_task is still genuinely
+            # in-flight when `finish` arrives, exercising the real
+            # cancel()-then-await-raises-CancelledError path instead of
+            # every other test's already-finished fake generator.
+            await asyncio.Event().wait()
+            yield  # pragma: no cover - unreachable
+
+        mock_conversation.receive_audio_chunks = blocking_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json({"type": "finish"})
+            data = websocket.receive_json()
+
+        assert data["type"] == "persona_result"
+
+
+def test_websocket_survives_invalid_json_text_and_still_reaches_finish():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="", attributes=[]), None, None)
+        )
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_text("this is not valid json{{{")
+            websocket.send_json({"type": "finish"})
+            data = websocket.receive_json()
+
+        assert data["type"] == "persona_result"
 
 
 def test_websocket_survives_non_object_message_and_still_reaches_finish():

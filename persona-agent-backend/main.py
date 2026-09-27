@@ -58,7 +58,15 @@ async def converse(websocket: WebSocket) -> None:
 
     try:
         while True:
-            message = await websocket.receive_json()
+            try:
+                # receive_json() runs json.loads() itself — a client
+                # sending text that isn't even valid JSON raises
+                # JSONDecodeError here, before the isinstance guard below
+                # ever gets a chance to run.
+                message = await websocket.receive_json()
+            except ValueError as e:
+                logger.warning("dropping invalid JSON message: %s", e)
+                continue
 
             if not isinstance(message, dict):
                 # A conforming client always sends a JSON object; a
