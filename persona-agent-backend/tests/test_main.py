@@ -110,6 +110,28 @@ def test_websocket_survives_malformed_audio_chunk_and_still_reaches_finish():
         mock_conversation.send_audio.assert_not_called()
 
 
+def test_websocket_survives_non_object_message_and_still_reaches_finish():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="", attributes=[]), None, None)
+        )
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json(["not", "an", "object"])
+            websocket.send_json({"type": "finish"})
+            data = websocket.receive_json()
+
+        assert data["type"] == "persona_result"
+
+
 def test_websocket_avatar_photo_sends_avatar_error_on_malformed_data():
     with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
         mock_conversation = mock_live_conversation_cls.return_value

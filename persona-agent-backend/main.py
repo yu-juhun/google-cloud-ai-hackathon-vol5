@@ -52,6 +52,14 @@ async def converse(websocket: WebSocket) -> None:
         while True:
             message = await websocket.receive_json()
 
+            if not isinstance(message, dict):
+                # A conforming client always sends a JSON object; a
+                # non-object frame (e.g. a bare array or string) would
+                # otherwise raise AttributeError on message.get() below
+                # and kill the whole session over one bad frame.
+                logger.warning("dropping non-object message: %r", message)
+                continue
+
             if message.get("type") == "audio_chunk":
                 try:
                     # A malformed audio_chunk frame (missing/invalid
