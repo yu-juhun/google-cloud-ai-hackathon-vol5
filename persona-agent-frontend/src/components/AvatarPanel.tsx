@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { PersonaSocket, Persona } from "../ws/PersonaSocket";
-import { startMicCapture, MicCapture } from "../audio/micCapture";
+import { startMicCapture, MicCapture, rmsVolume } from "../audio/micCapture";
 import { createAudioPlayback, AudioPlayback } from "../audio/audioPlayback";
 
 export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
@@ -30,12 +30,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
         playbackRef.current = createAudioPlayback();
       }
       playbackRef.current.playChunk(chunk);
-
-      const view = new Int16Array(chunk);
-      let sumSquares = 0;
-      for (let i = 0; i < view.length; i++) sumSquares += (view[i] / 0x7fff) ** 2;
-      const volume = Math.sqrt(sumSquares / view.length);
-      setMouthOpen(volume > 0.02);
+      setMouthOpen(rmsVolume(chunk) > 0.02);
     };
 
     return () => {
