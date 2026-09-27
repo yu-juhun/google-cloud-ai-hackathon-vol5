@@ -47,7 +47,7 @@ function createWorkletModuleUrl(workletName: string, processorSource: string): s
   return URL.createObjectURL(script);
 }
 
-function rmsVolume(pcm16: ArrayBuffer): number {
+export function rmsVolume(pcm16: ArrayBuffer): number {
   const view = new Int16Array(pcm16);
   let sumSquares = 0;
   for (let i = 0; i < view.length; i++) sumSquares += (view[i] / 0x7fff) ** 2;
