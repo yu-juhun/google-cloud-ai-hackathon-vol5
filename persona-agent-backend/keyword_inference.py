@@ -37,7 +37,7 @@ def infer_keywords(persona: Persona, genai_client) -> Persona:
     keywords_by_index = parsed["keywords_by_index"]
 
     updated_attributes = [
-        attr.model_copy(update={"inferred_keywords": keywords_by_index[i]})
+        attr.model_copy(update={"inferred_keywords": keywords_by_index[i] if i < len(keywords_by_index) else []})
         for i, attr in enumerate(persona.attributes)
     ]
 
