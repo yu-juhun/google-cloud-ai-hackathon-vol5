@@ -16,11 +16,9 @@ from contextlib import contextmanager
 
 @contextmanager
 def connected(path="/ws/converse"):
-    """websocket_connect that drains the avatar_templates message every
-    successful connection now sends immediately after start() succeeds —
-    tests that don't care about it shouldn't have to know it exists."""
+    """Thin wrapper kept only so every test doesn't need touching if the
+    connection handshake ever needs a preamble step again."""
     with client.websocket_connect(path) as websocket:
-        websocket.receive_json()  # avatar_templates
         yield websocket
 
 
@@ -229,25 +227,31 @@ def test_websocket_avatar_photo_sends_avatar_error_on_malformed_data():
         mock_conversation.set_base_photo.assert_not_called()
 
 
-def test_websocket_sends_avatar_templates_fallback_when_catalog_fetch_fails():
-    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
-        mock_conversation = mock_live_conversation_cls.return_value
-        mock_conversation.start = AsyncMock()
-        mock_conversation.close = AsyncMock()
+def test_avatar_templates_endpoint_is_plain_http_not_websocket():
+    # Must not require connecting/starting a Live session at all — that's
+    # the whole point of it being a separate GET endpoint (see its
+    # docstring): the client needs this before choosing a voice, and
+    # choosing a voice determines what a WebSocket connect() would do.
+    import youcam_client
 
-        async def fake_receive_audio_chunks():
-            return
-            yield  # pragma: no cover
+    youcam_client._template_catalog_cache = None
+    response = client.get("/avatar-templates")
 
-        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+    assert response.status_code == 200
+    body = response.json()
+    assert "female" in body and "male" in body
 
-        with client.websocket_connect("/ws/converse") as websocket:
-            data = websocket.receive_json()
 
-        assert data["type"] == "avatar_templates"
-        # list_avatar_templates() raises (no PERFECTCORP_API_KEY in test env);
-        # falls back to VERIFIED_TEMPLATE_IDS rather than sending nothing.
-        assert {t["id"] for t in data["data"]} == main.VERIFIED_TEMPLATE_IDS
+def test_avatar_templates_endpoint_falls_back_when_catalog_file_is_missing(monkeypatch):
+    import youcam_client
+
+    monkeypatch.setattr(youcam_client, "_TEMPLATE_CATALOG_PATH", "/nonexistent/avatar_templates.json")
+    youcam_client._template_catalog_cache = None
+
+    response = client.get("/avatar-templates")
+
+    ids = main.flatten_template_ids(response.json())
+    assert ids == main.VERIFIED_TEMPLATE_IDS
 
 
 def test_websocket_sends_start_error_and_closes_on_start_failure():

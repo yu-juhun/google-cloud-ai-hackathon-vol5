@@ -7,12 +7,17 @@ export interface PersonaAttribute {
   inferred_keywords: string[];
 }
 
-export interface AvatarTemplate {
+export interface AvatarTemplateEntry {
   id: string;
   title: string;
-  category: string;
-  gender: string;
+  thumb: string | null;
 }
+
+/** { gender: { category: [entry, ...] } } — the exact shape
+ * persona-agent-backend's GET /avatar-templates returns (a pre-processed
+ * static snapshot, not a live YouCam call — see that endpoint's
+ * docstring). */
+export type AvatarTemplateCatalog = Record<string, Record<string, AvatarTemplateEntry[]>>;
 
 export interface Persona {
   persona_id: string;
@@ -54,12 +59,19 @@ export class PersonaSocket {
    * drop (network loss, server restart) that none of the other
    * callbacks would otherwise report. */
   onDisconnected: ((event: CloseEvent) => void) | null = null;
-  /** Fires once per connection with the real, currently-available YouCam
-   * avatar template catalog (see persona-agent-backend's
-   * youcam_client.list_avatar_templates) — never a hardcoded guess. */
-  onAvatarTemplates: ((templates: AvatarTemplate[]) => void) | null = null;
 
   constructor(private url: string) {}
+
+  /** Plain HTTP GET, deliberately not part of the WebSocket protocol —
+   * see persona-agent-backend's GET /avatar-templates docstring: this
+   * catalog is needed before the user has chosen anything (including a
+   * voice), and connect() must not happen until voice is known. */
+  async fetchAvatarTemplates(): Promise<AvatarTemplateCatalog> {
+    const httpUrl = this.url.replace(/^ws/, "http").replace(/\/ws\/converse\/?$/, "/avatar-templates");
+    const resp = await fetch(httpUrl);
+    if (!resp.ok) throw new Error(`avatar-templates request failed: ${resp.status}`);
+    return resp.json();
+  }
 
   /** Resolves once the socket has actually reached OPEN. Callers that need
    * to start sending immediately after connecting (e.g. mic capture) must
@@ -108,8 +120,6 @@ export class PersonaSocket {
           this.onFinishError?.(message.message as string);
         } else if (message.type === "start_error") {
           this.onStartError?.(message.message as string);
-        } else if (message.type === "avatar_templates") {
-          this.onAvatarTemplates?.(message.data as AvatarTemplate[]);
         }
       };
     });

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { PersonaSocket, Persona, AvatarTemplate } from "../ws/PersonaSocket";
+import { useEffect, useRef, useState } from "react";
+import { PersonaSocket, Persona, AvatarTemplateCatalog } from "../ws/PersonaSocket";
 import { startMicCapture, MicCapture, rmsVolume } from "../audio/micCapture";
 import { createAudioPlayback, AudioPlayback } from "../audio/audioPlayback";
-import { Button, Card, Select, Alert, SelectOption } from "../ui";
+import { Button, Card, Select, Alert } from "../ui";
+import { TemplatePicker } from "./TemplatePicker";
 import "./AvatarPanel.css";
 
 // Only the 4 voice names confirmed present in the installed google-genai
@@ -21,8 +22,6 @@ const VOICE_OPTIONS = [
   { value: "Leda", label: "Leda（若々しい・女性的とされる）" },
 ];
 
-const GENDER_LABELS: Record<string, string> = { male: "男性", female: "女性" };
-
 export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [mouthOpen, setMouthOpen] = useState(false);
   const [persona, setPersona] = useState<Persona | null>(null);
@@ -30,7 +29,7 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [baseAvatarImage, setBaseAvatarImage] = useState<string | null>(null);
   const [baseAvatarImageOpen, setBaseAvatarImageOpen] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [templates, setTemplates] = useState<AvatarTemplate[]>([]);
+  const [catalog, setCatalog] = useState<AvatarTemplateCatalog>({});
   const [gender, setGender] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [voiceName, setVoiceName] = useState("");
@@ -52,7 +51,6 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     socket.onAvatarError = (message) => setErrorMessage(`アバター写真の処理に失敗しました: ${message}`);
     socket.onFinishError = (message) => setErrorMessage(`結果の生成に失敗しました: ${message}`);
     socket.onStartError = (message) => setErrorMessage(`会話の開始に失敗しました: ${message}`);
-    socket.onAvatarTemplates = (received) => setTemplates(received);
     socket.onDisconnected = () => {
       // A close after persona_result already arrived is the normal end
       // of the flow, not a failure — only report it if the conversation
@@ -69,17 +67,19 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
       setMouthOpen(rmsVolume(chunk) > 0.02);
     };
 
-    // Connect eagerly on mount so the real avatar_templates catalog has
-    // already arrived by the time the user opens the style picker or
-    // selects a photo, instead of the dropdown being empty until whichever
-    // action (話しかける / photo upload) happens to connect first.
-    // Promise.resolve(...) tolerates test doubles whose mocked connect()
-    // doesn't return a real promise.
-    Promise.resolve(socket.connect()).catch(() => {
-      // A failed eager connect surfaces again through onStartError/
-      // onDisconnected when the user actually tries to do something —
-      // no need to show an error before they've taken any action.
-    });
+    // Plain HTTP fetch — deliberately NOT a WebSocket connect(). Opening
+    // the WebSocket starts the Live session with whatever voice_name is
+    // known at that moment; connecting eagerly here (as this used to)
+    // locked in "no voice chosen yet" before the user ever opened the
+    // voice picker, so picking a different voice afterward had no
+    // effect on an already-started session.
+    // Promise.resolve(...) tolerates test doubles whose mocked
+    // fetchAvatarTemplates() doesn't return a real promise.
+    Promise.resolve(socket.fetchAvatarTemplates())
+      .then((received) => received && setCatalog(received))
+      .catch(() => {
+        setErrorMessage("アバターのスタイル一覧の取得に失敗しました。ページを再読み込みしてください。");
+      });
 
     return () => {
       playbackRef.current?.stop();
@@ -121,23 +121,11 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     try {
       const buffer = await file.arrayBuffer();
       await socket.connect(voiceName || undefined);
-      socket.sendAvatarPhoto(buffer, file.type, templateId || undefined);
+      socket.sendAvatarPhoto(buffer, file.type, templateId);
     } catch (e) {
       setErrorMessage(`アバター写真の処理に失敗しました: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
-
-  const genderOptions: SelectOption[] = useMemo(() => {
-    const genders = Array.from(new Set(templates.map((t) => t.gender).filter(Boolean)));
-    return [{ value: "", label: "おまかせ（既定）" }, ...genders.map((g) => ({ value: g, label: GENDER_LABELS[g] ?? g }))];
-  }, [templates]);
-  const styleOptions: SelectOption[] = useMemo(() => {
-    const styles = templates.filter((t) => !gender || t.gender === gender);
-    return [
-      { value: "", label: "おまかせ（既定）" },
-      ...styles.map((t) => ({ value: t.id, label: `${t.category} - ${t.title}` })),
-    ];
-  }, [templates, gender]);
 
   const handleGenderChange = (value: string) => {
     setGender(value);
@@ -146,6 +134,13 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     // than silently keep sending a template_id that doesn't match.
     setTemplateId("");
   };
+
+  // Requiring both before enabling the upload — not just gender — is
+  // what actually fixes "the avatar always comes back female no matter
+  // what I upload": leaving either unset used to silently omit
+  // template_id, which fell through to the backend's hardcoded
+  // "female_manga_mood" default.
+  const readyToUpload = Boolean(gender && templateId);
 
   const closedSrc = persona?.avatar_image
     ? `data:image/png;base64,${persona.avatar_image}`
@@ -173,21 +168,24 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
           width={200}
           height={200}
         />
-        <label className="avatar-panel__upload">
-          <span>顔写真をアップロード</span>
-          <input type="file" accept="image/*" onChange={handlePhotoChange} />
-        </label>
       </Card>
 
-      <section className="avatar-panel__options">
-        <Select label="性別" value={gender} onChange={(e) => handleGenderChange(e.target.value)} options={genderOptions} />
-        <Select
-          label="アバターのスタイル"
-          value={templateId}
-          onChange={(e) => setTemplateId(e.target.value)}
-          options={styleOptions}
-          disabled={templates.length === 0}
+      <Card>
+        <TemplatePicker
+          catalog={catalog}
+          gender={gender}
+          onGenderChange={handleGenderChange}
+          templateId={templateId}
+          onTemplateChange={setTemplateId}
         />
+      </Card>
+
+      <label className="avatar-panel__upload">
+        <span>{readyToUpload ? "顔写真をアップロード" : "先に性別とスタイルを選んでください"}</span>
+        <input type="file" accept="image/*" onChange={handlePhotoChange} disabled={!readyToUpload} />
+      </label>
+
+      <section className="avatar-panel__options">
         <Select label="声を選ぶ" value={voiceName} onChange={(e) => setVoiceName(e.target.value)} options={VOICE_OPTIONS} />
       </section>
 

@@ -1,10 +1,33 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { AvatarPanel } from "./AvatarPanel";
-import { PersonaSocket } from "../ws/PersonaSocket";
+import { PersonaSocket, AvatarTemplateCatalog } from "../ws/PersonaSocket";
 import * as micCapture from "../audio/micCapture";
 
 vi.mock("../ws/PersonaSocket");
+
+const SAMPLE_CATALOG: AvatarTemplateCatalog = {
+  female: { Anime: [{ id: "female_manga_mood", title: "Manga Mood", thumb: null }] },
+  male: { Lifestyle: [{ id: "male_yearbook", title: "Yearbook", thumb: null }] },
+};
+
+/** Renders with a template catalog already resolved (mirrors the mount-time
+ * fetchAvatarTemplates() call), then selects a gender + style tile so the
+ * photo upload is enabled — the realistic path a user takes now that both
+ * are required. */
+async function renderReadyToUpload(catalog: AvatarTemplateCatalog = SAMPLE_CATALOG, socket?: PersonaSocket) {
+  const s = socket ?? new PersonaSocket("wss://example.test");
+  s.fetchAvatarTemplates = vi.fn().mockResolvedValue(catalog);
+  render(<AvatarPanel socket={s} />);
+  await act(async () => {});
+
+  const [gender, categories] = Object.entries(catalog)[0];
+  const [, entries] = Object.entries(categories)[0];
+  fireEvent.click(screen.getByRole("radio", { name: gender === "female" ? "女性" : "男性" }));
+  fireEvent.click(screen.getByRole("radio", { name: new RegExp(entries[0].title) }));
+
+  return s;
+}
 
 describe("AvatarPanel", () => {
   it("shows the closed-mouth avatar by default", () => {
@@ -42,24 +65,34 @@ describe("AvatarPanel", () => {
     startMicCaptureSpy.mockRestore();
   });
 
-  it("filters the style options to the selected gender", () => {
+  it("only shows styles for the selected gender, and requires a gender first", async () => {
     const socket = new PersonaSocket("wss://example.test");
+    socket.fetchAvatarTemplates = vi.fn().mockResolvedValue(SAMPLE_CATALOG);
     render(<AvatarPanel socket={socket} />);
+    await act(async () => {});
 
-    act(() => {
-      socket.onAvatarTemplates?.([
-        { id: "female_manga_mood", title: "Manga Mood", category: "Anime", gender: "female" },
-        { id: "male_yearbook", title: "Yearbook", category: "Lifestyle", gender: "male" },
-      ]);
-    });
+    expect(screen.queryByRole("radio", { name: /Manga Mood/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Yearbook/ })).not.toBeInTheDocument();
 
-    const styleSelect = screen.getByLabelText("アバターのスタイル") as HTMLSelectElement;
-    expect(styleSelect.options).toHaveLength(3); // おまかせ + 2 styles
+    fireEvent.click(screen.getByRole("radio", { name: "女性" }));
 
-    fireEvent.change(screen.getByLabelText("性別"), { target: { value: "female" } });
+    expect(screen.getByRole("radio", { name: /Manga Mood/ })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: /Yearbook/ })).not.toBeInTheDocument();
+  });
 
-    expect(styleSelect.options).toHaveLength(2); // おまかせ + 1 matching style
-    expect(Array.from(styleSelect.options).some((o) => o.value === "male_yearbook")).toBe(false);
+  it("disables the photo upload until both gender and style are chosen", async () => {
+    const socket = new PersonaSocket("wss://example.test");
+    socket.fetchAvatarTemplates = vi.fn().mockResolvedValue(SAMPLE_CATALOG);
+    render(<AvatarPanel socket={socket} />);
+    await act(async () => {});
+
+    expect(screen.getByLabelText("先に性別とスタイルを選んでください")).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("radio", { name: "女性" }));
+    expect(screen.getByLabelText("先に性別とスタイルを選んでください")).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("radio", { name: /Manga Mood/ }));
+    expect(screen.getByLabelText("顔写真をアップロード")).not.toBeDisabled();
   });
 
   it("shows an error message when the connection drops before finishing", () => {
@@ -109,7 +142,7 @@ describe("AvatarPanel", () => {
   it("shows an error message if sending the photo fails", async () => {
     const socket = new PersonaSocket("wss://example.test");
     socket.connect = vi.fn().mockRejectedValue(new Error("connection refused"));
-    render(<AvatarPanel socket={socket} />);
+    await renderReadyToUpload(SAMPLE_CATALOG, socket);
 
     const file = new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" });
     const input = screen.getByLabelText("顔写真をアップロード") as HTMLInputElement;
@@ -138,15 +171,19 @@ describe("AvatarPanel", () => {
     expect(screen.getByText("テスト要約")).toBeInTheDocument();
   });
 
-  it("shows a photo upload input before the conversation starts", () => {
-    render(<AvatarPanel socket={new PersonaSocket("wss://example.test")} />);
-    expect(screen.getByLabelText("顔写真をアップロード")).toBeInTheDocument();
+  it("shows a photo upload input before the conversation starts, initially disabled", async () => {
+    const socket = new PersonaSocket("wss://example.test");
+    socket.fetchAvatarTemplates = vi.fn().mockResolvedValue(SAMPLE_CATALOG);
+    render(<AvatarPanel socket={socket} />);
+    await act(async () => {});
+
+    expect(screen.getByLabelText("先に性別とスタイルを選んでください")).toBeDisabled();
   });
 
-  it("sends the selected photo via socket.sendAvatarPhoto", async () => {
+  it("sends the selected photo and its template_id via socket.sendAvatarPhoto", async () => {
     const socket = new PersonaSocket("wss://example.test");
     socket.sendAvatarPhoto = vi.fn();
-    render(<AvatarPanel socket={socket} />);
+    await renderReadyToUpload(SAMPLE_CATALOG, socket);
 
     const file = new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" });
     const input = screen.getByLabelText("顔写真をアップロード") as HTMLInputElement;
@@ -154,30 +191,7 @@ describe("AvatarPanel", () => {
       fireEvent.change(input, { target: { files: [file] } });
     });
 
-    expect(socket.sendAvatarPhoto).toHaveBeenCalled();
-    const [, contentType] = (socket.sendAvatarPhoto as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(contentType).toBe("image/png");
-  });
-
-  it("sends the selected template_id along with the photo", async () => {
-    const socket = new PersonaSocket("wss://example.test");
-    socket.sendAvatarPhoto = vi.fn();
-    render(<AvatarPanel socket={socket} />);
-
-    act(() => {
-      socket.onAvatarTemplates?.([
-        { id: "female_manga_mood", title: "Manga Mood", category: "Anime", gender: "female" },
-      ]);
-    });
-    fireEvent.change(screen.getByLabelText("アバターのスタイル"), { target: { value: "female_manga_mood" } });
-    const file = new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" });
-    const input = screen.getByLabelText("顔写真をアップロード") as HTMLInputElement;
-    await act(async () => {
-      fireEvent.change(input, { target: { files: [file] } });
-    });
-
-    const [, , templateId] = (socket.sendAvatarPhoto as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(templateId).toBe("female_manga_mood");
+    expect(socket.sendAvatarPhoto).toHaveBeenCalledWith(expect.anything(), "image/png", "female_manga_mood");
   });
 
   it("connects with the selected voice when starting the conversation", async () => {
@@ -291,7 +305,7 @@ describe("AvatarPanel", () => {
     const socket = new PersonaSocket("wss://example.test");
     socket.connect = vi.fn().mockResolvedValue(undefined);
     socket.sendAvatarPhoto = vi.fn();
-    render(<AvatarPanel socket={socket} />);
+    await renderReadyToUpload(SAMPLE_CATALOG, socket);
 
     const file = new File([new Uint8Array([1, 2, 3])], "photo.png", { type: "image/png" });
     const input = screen.getByLabelText("顔写真をアップロード") as HTMLInputElement;

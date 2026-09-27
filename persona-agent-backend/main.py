@@ -7,7 +7,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from google import genai
 
 from live_session import VOICE_NAMES, LiveConversation
-from youcam_client import VERIFIED_TEMPLATE_IDS, list_avatar_templates
+from youcam_client import VERIFIED_TEMPLATE_IDS, flatten_template_ids, load_avatar_template_catalog
 
 app = FastAPI(title="persona-agent-backend")
 logger = logging.getLogger(__name__)
@@ -24,6 +24,27 @@ def _build_genai_client() -> genai.Client:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"service": "persona-agent-backend", "status": "healthy"}
+
+
+def _template_catalog_with_fallback() -> dict:
+    try:
+        return load_avatar_template_catalog()
+    except Exception as e:
+        logger.warning("could not load avatar template catalog, falling back: %s", e)
+        return {"": {"": [{"id": tid, "title": tid, "thumb": None} for tid in VERIFIED_TEMPLATE_IDS]}}
+
+
+@app.get("/avatar-templates")
+async def avatar_templates() -> dict:
+    """A plain HTTP endpoint on purpose — the client needs this catalog
+    before the user has chosen anything (gender/style/voice), and it has
+    nothing to do with the Gemini Live session. Fetching it over the
+    WebSocket would force connecting — and therefore starting the Live
+    session with whatever voice was picked so far, or none — before the
+    user has actually finished choosing a voice. Reads a pre-processed
+    static snapshot (see youcam_client.load_avatar_template_catalog),
+    not a live YouCam API call."""
+    return await asyncio.to_thread(_template_catalog_with_fallback)
 
 
 async def _relay_model_audio(websocket: WebSocket, conversation: LiveConversation) -> None:
@@ -58,20 +79,6 @@ async def converse(websocket: WebSocket) -> None:
         await websocket.send_json({"type": "start_error", "message": str(e)})
         await websocket.close()
         return
-
-    # Fetch the real avatar-template catalog once per connection (it's a
-    # free list call, not a paid generation) so the client can offer every
-    # currently-available style/gender combination instead of a hardcoded
-    # guess. Falls back to the single statically-verified id if YouCam
-    # credentials aren't configured or the API call fails — a template
-    # catalog fetch failure must not block starting the voice conversation.
-    try:
-        templates = await asyncio.to_thread(list_avatar_templates)
-    except Exception as e:
-        logger.warning("could not fetch avatar template catalog, falling back: %s", e)
-        templates = [{"id": tid, "title": tid, "category": "", "gender": ""} for tid in VERIFIED_TEMPLATE_IDS]
-    verified_template_ids = {t["id"] for t in templates}
-    await websocket.send_json({"type": "avatar_templates", "data": templates})
 
     relay_task = asyncio.create_task(_relay_model_audio(websocket, conversation))
 
@@ -119,6 +126,13 @@ async def converse(websocket: WebSocket) -> None:
                 # Silently fall back to the default rather than forwarding
                 # an unverified template_id to YouCam (that's a real, paid
                 # API call away from a 400) — the client is untrusted input.
+                # Re-fetches the (cached) catalog rather than reusing a
+                # value captured at connect time, so a template added to
+                # YouCam's catalog after this process started is still
+                # accepted without a restart.
+                verified_template_ids = await asyncio.to_thread(
+                    lambda: flatten_template_ids(_template_catalog_with_fallback())
+                )
                 template_id = (
                     requested_template_id if requested_template_id in verified_template_ids else None
                 )

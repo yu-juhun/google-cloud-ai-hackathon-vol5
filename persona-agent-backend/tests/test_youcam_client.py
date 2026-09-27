@@ -139,7 +139,6 @@ def test_get_access_token_encrypts_payload_and_parses_result_envelope(monkeypatc
 @patch("youcam_client._get_access_token", return_value="fake-token")
 @patch("youcam_client.requests.get")
 def test_list_avatar_templates_paginates_and_derives_gender(mock_get, _mock_token):
-    youcam_client._template_catalog_cache = None
     page1 = MagicMock()
     page1.json.return_value = {
         "data": {
@@ -164,15 +163,33 @@ def test_list_avatar_templates_paginates_and_derives_gender(mock_get, _mock_toke
     assert mock_get.call_count == 2
 
 
-@patch("youcam_client._get_access_token", return_value="fake-token")
-@patch("youcam_client.requests.get")
-def test_list_avatar_templates_caches_after_first_call(mock_get, _mock_token):
+def test_load_avatar_template_catalog_reads_and_caches_the_static_file(monkeypatch, tmp_path):
     youcam_client._template_catalog_cache = None
-    page = MagicMock()
-    page.json.return_value = {"data": {"templates": [{"id": "female_manga_mood", "title": "x", "category_name": "y"}]}}
-    mock_get.return_value = page
+    fixture = tmp_path / "avatar_templates.json"
+    fixture.write_text('{"female": {"Anime": [{"id": "female_manga_mood", "title": "x", "thumb": "y"}]}}')
+    monkeypatch.setattr(youcam_client, "_TEMPLATE_CATALOG_PATH", str(fixture))
 
-    youcam_client.list_avatar_templates()
-    youcam_client.list_avatar_templates()
+    calls = []
+    real_open = open
 
-    assert mock_get.call_count == 1
+    def counting_open(path, *args, **kwargs):
+        calls.append(path)
+        return real_open(path, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", counting_open)
+
+    first = youcam_client.load_avatar_template_catalog()
+    second = youcam_client.load_avatar_template_catalog()
+
+    assert first == {"female": {"Anime": [{"id": "female_manga_mood", "title": "x", "thumb": "y"}]}}
+    assert first is second
+    assert len(calls) == 1
+
+
+def test_flatten_template_ids_walks_gender_and_category_levels():
+    catalog = {
+        "female": {"Anime": [{"id": "female_manga_mood", "title": "x", "thumb": "y"}]},
+        "male": {"Lifestyle": [{"id": "male_yearbook", "title": "x", "thumb": "y"}]},
+    }
+
+    assert youcam_client.flatten_template_ids(catalog) == {"female_manga_mood", "male_yearbook"}

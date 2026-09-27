@@ -125,17 +125,24 @@ describe("PersonaSocket", () => {
     expect(onError).toHaveBeenCalledWith("model not found");
   });
 
-  it("calls onAvatarTemplates when an avatar_templates message arrives", () => {
+  it("fetches the avatar template catalog over plain HTTP, not the WebSocket", async () => {
+    const catalog = { female: { Anime: [{ id: "female_manga_mood", title: "Manga Mood", thumb: "x.jpg" }] } };
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => catalog });
+    vi.stubGlobal("fetch", fetchMock);
+
     const socket = new PersonaSocket("wss://example.test/ws/converse");
-    const onTemplates = vi.fn();
-    socket.onAvatarTemplates = onTemplates;
-    socket.connect();
+    const result = await socket.fetchAvatarTemplates();
 
-    const ws = FakeWebSocket.instances[0];
-    const templates = [{ id: "female_manga_mood", title: "Manga Mood", category: "Anime", gender: "female" }];
-    ws.onmessage?.({ data: JSON.stringify({ type: "avatar_templates", data: templates }) });
+    expect(fetchMock).toHaveBeenCalledWith("https://example.test/avatar-templates");
+    expect(result).toEqual(catalog);
+  });
 
-    expect(onTemplates).toHaveBeenCalledWith(templates);
+  it("rejects when the avatar-templates request fails", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
+
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+
+    await expect(socket.fetchAvatarTemplates()).rejects.toThrow("500");
   });
 
   it("calls onDisconnected when the connection closes", () => {

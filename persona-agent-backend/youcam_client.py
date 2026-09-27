@@ -9,6 +9,7 @@ actual "data" for every endpoint except /client/auth) and the task-create
 param name wrong ("output_cnt" vs the real "output_count").
 """
 import base64
+import json
 import os
 import time
 
@@ -20,34 +21,52 @@ BASE_URL = "https://yce-api-01.makeupar.com"
 POLL_INTERVAL_SECONDS = 3
 MAX_POLL_ATTEMPTS = 40
 
-# Fallback used only if list_avatar_templates() can't reach the real API
-# (e.g. PERFECTCORP_API_KEY not configured). Confirmed against the real
-# /s2s/v2.0/task/ai-avatar endpoint (2026-09-27). Template names are NOT a
-# simple <gender>_<style>_<mood> pattern — e.g. "male_manga_mood" (a
-# plausible symmetric guess) returns 400 InvalidTemplate even though
-# "female_manga_mood" is real, so this set exists to avoid ever guessing.
+_ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
+_TEMPLATE_CATALOG_PATH = os.path.join(_ASSETS_DIR, "avatar_templates.json")
+
+# Fallback used only if the static catalog file is missing/unreadable.
+# Confirmed against the real /s2s/v2.0/task/ai-avatar endpoint
+# (2026-09-27). Template names are NOT a simple <gender>_<style>_<mood>
+# pattern — e.g. "male_manga_mood" (a plausible symmetric guess) returns
+# 400 InvalidTemplate even though "female_manga_mood" is real, so this
+# set exists to avoid ever guessing.
 VERIFIED_TEMPLATE_IDS = {"female_manga_mood"}
 
-_template_catalog_cache: list[dict] | None = None
+_template_catalog_cache: dict | None = None
+
+
+def load_avatar_template_catalog() -> dict:
+    """Reads the pre-processed template catalog from
+    assets/avatar_templates.json: {gender: {category: [{id, title,
+    thumb}]}}. This is a checked-in snapshot (generated via
+    list_avatar_templates() below, see that function's docstring for how
+    to regenerate it), not a live API call — the catalog changes rarely,
+    and the frontend needs this before the user has chosen anything
+    (including whether to even start a Live/YouCam session), so it must
+    not depend on network/credentials at request time.
+    Result is cached for the process lifetime.
+    Raises OSError/json.JSONDecodeError if the file is missing/corrupt;
+    callers decide how to fall back (see VERIFIED_TEMPLATE_IDS)."""
+    global _template_catalog_cache
+    if _template_catalog_cache is None:
+        with open(_TEMPLATE_CATALOG_PATH, encoding="utf-8") as f:
+            _template_catalog_cache = json.load(f)
+    return _template_catalog_cache
+
+
+def flatten_template_ids(catalog: dict) -> set[str]:
+    return {t["id"] for categories in catalog.values() for templates in categories.values() for t in templates}
 
 
 def list_avatar_templates() -> list[dict]:
-    """Fetches the real AI Avatar template catalog from
+    """Dev tool for regenerating assets/avatar_templates.json — NOT called
+    at request time (see load_avatar_template_catalog above). Fetches the
+    real AI Avatar template catalog from
     GET /s2s/v2.0/task/template/ai-avatar (paginated via next_token),
     confirmed live on 2026-09-27: 71 templates, each {"id", "title",
     "category_name"}, ids prefixed "male_"/"female_" (not every style has
-    both genders — e.g. "manga_mood" only has a female_ variant). This
-    endpoint is a free list call, unlike task creation, so it's safe to
-    call on every avatar_photo flow rather than shipping a static
-    snapshot that goes stale as Perfect Corp adds/removes templates.
-    Result is cached for the process lifetime — the catalog doesn't
-    change within a single deployment's lifespan.
-    Raises requests.HTTPError/KeyError on auth or shape failures; callers
-    decide how to fall back (see VERIFIED_TEMPLATE_IDS)."""
-    global _template_catalog_cache
-    if _template_catalog_cache is not None:
-        return _template_catalog_cache
-
+    both genders — e.g. "manga_mood" only has a female_ variant).
+    Raises requests.HTTPError/KeyError on auth or shape failures."""
     token = _get_access_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -71,7 +90,6 @@ def list_avatar_templates() -> list[dict]:
         if not starting_token:
             break
 
-    _template_catalog_cache = templates
     return templates
 
 
