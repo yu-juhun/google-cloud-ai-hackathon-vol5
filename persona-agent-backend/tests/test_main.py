@@ -3,10 +3,31 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
+import main
 from main import app
 from schemas import Persona
 
 client = TestClient(app)
+
+
+def test_build_genai_client_reads_project_and_location_from_env(monkeypatch):
+    monkeypatch.setenv("VERTEX_PROJECT_ID", "test-project")
+    monkeypatch.setenv("VERTEX_LOCATION", "asia-northeast1")
+
+    with patch("main.genai.Client") as mock_client_cls:
+        main._build_genai_client()
+
+    mock_client_cls.assert_called_once_with(vertexai=True, project="test-project", location="asia-northeast1")
+
+
+def test_build_genai_client_defaults_location_to_us_central1(monkeypatch):
+    monkeypatch.setenv("VERTEX_PROJECT_ID", "test-project")
+    monkeypatch.delenv("VERTEX_LOCATION", raising=False)
+
+    with patch("main.genai.Client") as mock_client_cls:
+        main._build_genai_client()
+
+    assert mock_client_cls.call_args.kwargs["location"] == "us-central1"
 
 
 def test_health_endpoint():
