@@ -4,6 +4,7 @@ import logging
 import os
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 
 from live_session import VOICE_NAMES, LiveConversation
@@ -11,6 +12,21 @@ from youcam_client import VERIFIED_TEMPLATE_IDS, flatten_template_ids, load_avat
 
 app = FastAPI(title="persona-agent-backend")
 logger = logging.getLogger(__name__)
+
+# GET /avatar-templates is a plain cross-origin fetch() from the frontend
+# (a different port in dev, a different Cloud Run service in prod) — with
+# no CORS headers at all the browser blocks it outright before the
+# response body is ever readable, which is exactly the failure this fixes
+# ("アバターのスタイル一覧の取得に失敗しました"). No cookies/auth are
+# involved in this endpoint, so an open origin allowlist carries no
+# additional risk beyond what already exists (see the security review
+# noting /ws/converse itself has no auth).
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
 
 
 def _build_genai_client() -> genai.Client:

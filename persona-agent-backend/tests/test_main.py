@@ -227,6 +227,19 @@ def test_websocket_avatar_photo_sends_avatar_error_on_malformed_data():
         mock_conversation.set_base_photo.assert_not_called()
 
 
+def test_avatar_templates_endpoint_allows_cross_origin_requests():
+    # The frontend calls this from a different origin (a different dev
+    # port, or a different Cloud Run service in prod) via plain fetch() —
+    # without CORS headers the browser rejects the response outright
+    # before the frontend ever sees a body, regardless of status code.
+    import youcam_client
+
+    youcam_client._template_catalog_cache = None
+    response = client.get("/avatar-templates", headers={"Origin": "http://localhost:5173"})
+
+    assert response.headers.get("access-control-allow-origin") == "*"
+
+
 def test_avatar_templates_endpoint_is_plain_http_not_websocket():
     # Must not require connecting/starting a Live session at all — that's
     # the whole point of it being a separate GET endpoint (see its
