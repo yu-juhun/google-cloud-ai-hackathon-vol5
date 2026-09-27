@@ -86,6 +86,45 @@ def test_websocket_audio_chunk_flow_calls_live_conversation():
         mock_conversation.send_audio.assert_called_once_with(b"input-bytes")
 
 
+def test_websocket_survives_malformed_audio_chunk_and_still_reaches_finish():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.send_audio = AsyncMock()
+        mock_conversation.finish = AsyncMock(
+            return_value=(Persona(persona_id="test-id", raw_summary="", attributes=[]), None, None)
+        )
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json({"type": "audio_chunk", "data": "not-valid-base64!!!"})
+            websocket.send_json({"type": "finish"})
+            data = websocket.receive_json()
+
+        assert data["type"] == "persona_result"
+        mock_conversation.send_audio.assert_not_called()
+
+
+def test_websocket_avatar_photo_sends_avatar_error_on_malformed_data():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+        mock_conversation.set_base_photo = MagicMock()
+
+        with client.websocket_connect("/ws/converse") as websocket:
+            websocket.send_json({"type": "avatar_photo", "data": "not-valid-base64!!!"})
+            data = websocket.receive_json()
+
+        assert data["type"] == "avatar_error"
+        mock_conversation.set_base_photo.assert_not_called()
+
+
 def test_websocket_finish_flow_sends_finish_error_on_exception():
     with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
         mock_conversation = mock_live_conversation_cls.return_value

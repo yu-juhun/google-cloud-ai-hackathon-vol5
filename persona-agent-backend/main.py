@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import logging
 import os
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -8,6 +9,7 @@ from google import genai
 from live_session import LiveConversation
 
 app = FastAPI(title="persona-agent-backend")
+logger = logging.getLogger(__name__)
 
 
 def _build_genai_client() -> genai.Client:
@@ -51,11 +53,24 @@ async def converse(websocket: WebSocket) -> None:
             message = await websocket.receive_json()
 
             if message.get("type") == "audio_chunk":
-                audio_bytes = base64.b64decode(message["data"])
-                await conversation.send_audio(audio_bytes)
+                try:
+                    # A malformed audio_chunk frame (missing/invalid
+                    # base64 data) must not kill a whole conversation —
+                    # audio_chunk arrives every ~128ms, so one bad frame
+                    # is expected to happen occasionally and should just
+                    # be dropped, not lose everything transcribed so far.
+                    audio_bytes = base64.b64decode(message["data"])
+                except (KeyError, ValueError, TypeError) as e:
+                    logger.warning("dropping malformed audio_chunk: %s", e)
+                else:
+                    await conversation.send_audio(audio_bytes)
 
             elif message.get("type") == "avatar_photo":
-                photo_bytes = base64.b64decode(message["data"])
+                try:
+                    photo_bytes = base64.b64decode(message["data"])
+                except (KeyError, ValueError, TypeError) as e:
+                    await websocket.send_json({"type": "avatar_error", "message": str(e)})
+                    continue
                 content_type = message.get("content_type", "image/png")
                 try:
                     # set_base_photo calls YouCam synchronously (it can
