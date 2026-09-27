@@ -42,6 +42,11 @@ export class PersonaSocket {
   onAvatarError: ((message: string) => void) | null = null;
   onFinishError: ((message: string) => void) | null = null;
   onStartError: ((message: string) => void) | null = null;
+  /** Fires when the connection closes for any reason other than the
+   * client itself never having connected — including an unexpected
+   * drop (network loss, server restart) that none of the other
+   * callbacks would otherwise report. */
+  onDisconnected: ((event: CloseEvent) => void) | null = null;
 
   constructor(private url: string) {}
 
@@ -67,6 +72,7 @@ export class PersonaSocket {
         this.connecting = null;
         reject(event);
       };
+      ws.onclose = (event) => this.onDisconnected?.(event);
       ws.onmessage = (event: { data: string }) => {
         const message = JSON.parse(event.data);
         if (message.type === "persona_result") {

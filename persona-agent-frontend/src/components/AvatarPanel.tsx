@@ -12,9 +12,11 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const playbackRef = useRef<AudioPlayback | null>(null);
   const captureRef = useRef<MicCapture | null>(null);
+  const resultReceivedRef = useRef(false);
 
   useEffect(() => {
     socket.onPersonaResult = (result) => {
+      resultReceivedRef.current = true;
       setPersona(result);
       setErrorMessage(null);
     };
@@ -26,6 +28,14 @@ export function AvatarPanel({ socket }: { socket: PersonaSocket }) {
     socket.onAvatarError = (message) => setErrorMessage(`アバター写真の処理に失敗しました: ${message}`);
     socket.onFinishError = (message) => setErrorMessage(`結果の生成に失敗しました: ${message}`);
     socket.onStartError = (message) => setErrorMessage(`会話の開始に失敗しました: ${message}`);
+    socket.onDisconnected = () => {
+      // A close after persona_result already arrived is the normal end
+      // of the flow, not a failure — only report it if the conversation
+      // was cut off before ever finishing.
+      if (!resultReceivedRef.current) {
+        setErrorMessage("接続が予期せず切断されました。もう一度お試しください。");
+      }
+    };
     socket.onAudioChunk = (chunk) => {
       if (!playbackRef.current) {
         playbackRef.current = createAudioPlayback();

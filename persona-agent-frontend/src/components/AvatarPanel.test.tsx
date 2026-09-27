@@ -42,6 +42,38 @@ describe("AvatarPanel", () => {
     startMicCaptureSpy.mockRestore();
   });
 
+  it("shows an error message when the connection drops before finishing", () => {
+    const socket = new PersonaSocket("wss://example.test");
+    render(<AvatarPanel socket={socket} />);
+
+    act(() => {
+      socket.onDisconnected?.({} as CloseEvent);
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("接続が予期せず切断されました");
+  });
+
+  it("does not show a disconnect error if the persona result already arrived", () => {
+    const socket = new PersonaSocket("wss://example.test");
+    render(<AvatarPanel socket={socket} />);
+
+    act(() => {
+      socket.onPersonaResult?.({
+        persona_id: "abc",
+        raw_summary: "テスト要約",
+        attributes: [],
+        schema_version: "2",
+        avatar_image: null,
+        avatar_image_open: null,
+      });
+    });
+    act(() => {
+      socket.onDisconnected?.({} as CloseEvent);
+    });
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("shows an error message if starting the conversation fails", async () => {
     const socket = new PersonaSocket("wss://example.test");
     socket.connect = vi.fn().mockRejectedValue(new Error("mic permission denied"));

@@ -7,6 +7,7 @@ class FakeWebSocket {
   readyState = FakeWebSocket.OPEN;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
+  onclose: ((event: unknown) => void) | null = null;
   sent: string[] = [];
   constructor(public url: string) {
     FakeWebSocket.instances.push(this);
@@ -122,6 +123,18 @@ describe("PersonaSocket", () => {
     ws.onmessage?.({ data: JSON.stringify({ type: "start_error", message: "model not found" }) });
 
     expect(onError).toHaveBeenCalledWith("model not found");
+  });
+
+  it("calls onDisconnected when the connection closes", () => {
+    const socket = new PersonaSocket("wss://example.test/ws/converse");
+    const onDisconnected = vi.fn();
+    socket.onDisconnected = onDisconnected;
+    socket.connect();
+
+    const ws = FakeWebSocket.instances[0];
+    ws.onclose?.({ code: 1006, reason: "" });
+
+    expect(onDisconnected).toHaveBeenCalledWith({ code: 1006, reason: "" });
   });
 
   it("sends a base64 avatar_photo message with content_type", () => {
