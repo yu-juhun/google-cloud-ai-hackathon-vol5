@@ -186,3 +186,65 @@ async def test_receive_audio_chunks_calls_receive_again_for_the_next_turn():
     assert results == [(None, "ターン1"), (None, "ターン2")]
     assert conversation._transcript_parts == ["モデル: ターン1", "モデル: ターン2"]
     assert conversation._session._call_count == 2
+
+
+class _FakeSessionContext:
+    def __init__(self, session):
+        self._session = session
+        self.aexit_called_with = None
+
+    async def __aenter__(self):
+        return self._session
+
+    async def __aexit__(self, *args):
+        self.aexit_called_with = args
+
+
+@pytest.mark.asyncio
+async def test_start_connects_with_the_expected_model_and_stores_the_session():
+    fake_session = MagicMock()
+    fake_ctx = _FakeSessionContext(fake_session)
+    fake_client = MagicMock()
+    fake_client.aio.live.connect.return_value = fake_ctx
+
+    conversation = LiveConversation(genai_client=fake_client)
+    await conversation.start()
+
+    assert conversation._session is fake_session
+    assert conversation._session_ctx is fake_ctx
+    call_kwargs = fake_client.aio.live.connect.call_args.kwargs
+    assert call_kwargs["model"] == "gemini-live-2.5-flash-native-audio"
+
+
+@pytest.mark.asyncio
+async def test_send_audio_sends_a_realtime_pcm_blob():
+    conversation = LiveConversation(genai_client=MagicMock())
+    conversation._session = MagicMock()
+    conversation._session.send_realtime_input = AsyncMock()
+
+    await conversation.send_audio(b"pcm-bytes")
+
+    call_kwargs = conversation._session.send_realtime_input.call_args.kwargs
+    assert call_kwargs["audio"].data == b"pcm-bytes"
+    assert call_kwargs["audio"].mime_type == "audio/pcm;rate=16000"
+
+
+@pytest.mark.asyncio
+async def test_close_exits_the_session_context_and_clears_it():
+    fake_ctx = _FakeSessionContext(MagicMock())
+    conversation = LiveConversation(genai_client=MagicMock())
+    conversation._session_ctx = fake_ctx
+
+    await conversation.close()
+
+    assert fake_ctx.aexit_called_with == (None, None, None)
+    assert conversation._session_ctx is None
+
+
+@pytest.mark.asyncio
+async def test_close_is_a_noop_when_never_started():
+    conversation = LiveConversation(genai_client=MagicMock())
+
+    await conversation.close()  # must not raise
+
+    assert conversation._session_ctx is None
