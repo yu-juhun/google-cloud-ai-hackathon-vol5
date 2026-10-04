@@ -1,0 +1,387 @@
+{
+  "male": {
+    "Ghost": [
+      {
+        "id": "male_jester",
+        "title": "Jester",
+        "thumb": "https://cdn.perfectcorp.com/cms/2efa446a-01fe-4450-b3e1-042c145c60a1/1724991332786/M_Clown.jpg"
+      },
+      {
+        "id": "male_calavera_art",
+        "title": "Calavera Art",
+        "thumb": "https://cdn.perfectcorp.com/cms/f50c28da-de29-48e1-8406-b5c6ff66721f/1725247478217/M_La_Catrina.jpg"
+      },
+      {
+        "id": "male_stained_glass",
+        "title": "Stained Glass",
+        "thumb": "https://cdn.perfectcorp.com/cms/b5210c2f-86ce-4809-b79b-83e1e665698a/1725242316260/M_Stained Glass.jpg"
+      },
+      {
+        "id": "male_wicked_whiskers",
+        "title": "Wicked Whiskers",
+        "thumb": "https://cdn.perfectcorp.com/cms/1240333b-6ab6-468f-851c-d5e7dbccee8d/1720495666777/4 (1).jpg"
+      },
+      {
+        "id": "male_eerie_craze",
+        "title": "Eerie Craze",
+        "thumb": "https://cdn.perfectcorp.com/cms/97cc9699-1537-466d-b39f-be153b90cd9a/1720575838532/M_Eerie Craze.jpg"
+      }
+    ],
+    "Trendy": [
+      {
+        "id": "male_iconic_doll",
+        "title": "Iconic Doll",
+        "thumb": "https://cdn.perfectcorp.com/cms/c6e18ac3-d48c-4383-8b46-b7de40b21bad/1747205065814/file.jpg"
+      },
+      {
+        "id": "male_stylish",
+        "title": "Stylish",
+        "thumb": "https://cdn.perfectcorp.com/cms/ac94c58f-68a9-4805-bd65-7de26064fb0e/1720576057945/M_Stylish.png"
+      },
+      {
+        "id": "male_k_pop_star",
+        "title": "K-Pop Star",
+        "thumb": "https://cdn.perfectcorp.com/cms/a266ee65-15dd-400a-b357-fa4012dae2a7/1747205485796/file.jpg"
+      },
+      {
+        "id": "male_furry_grouch",
+        "title": "Furry Grouch",
+        "thumb": "https://cdn.perfectcorp.com/cms/85f766fd-9bcf-4385-b5d5-d7c3681d0f73/1731985178921/M thumb.jpg"
+      }
+    ],
+    "Lifestyle": [
+      {
+        "id": "male_chill_chaser",
+        "title": "Chill Chaser",
+        "thumb": "https://cdn.perfectcorp.com/cms/ee383a68-1e9c-456e-bf0f-1f62d3a8b968/1731402911062/M_Winter.jpg"
+      },
+      {
+        "id": "male_cute_kid",
+        "title": "Cute Kid",
+        "thumb": "https://cdn.perfectcorp.com/cms/11021aba-4ffd-47d2-aaef-aab7c279a159/1720505977681/M_Cute kid.jpg"
+      },
+      {
+        "id": "male_yearbook",
+        "title": "Yearbook",
+        "thumb": "https://cdn.perfectcorp.com/cms/4187fb47-6ee0-4ac3-a615-e1e388121a61/1747131192888/file.png"
+      },
+      {
+        "id": "male_nature",
+        "title": "Nature",
+        "thumb": "https://cdn.perfectcorp.com/cms/0e6733b5-f30d-4f67-aef3-511966145ebd/1720507573799/M_Nature.jpg"
+      },
+      {
+        "id": "male_rock_star",
+        "title": "Rock Star",
+        "thumb": "https://cdn.perfectcorp.com/cms/1cbef0f1-d27f-4759-a39b-dd6d1476b496/1721358003996/M_Rock Star.jpg"
+      }
+    ],
+    "Artistry": [
+      {
+        "id": "male_pop_art",
+        "title": "Pop Art",
+        "thumb": "https://cdn.perfectcorp.com/cms/60cfe9af-8787-48b1-87eb-1668edb57596/1720495173407/artistic_v3_popart_thumbnail.jpg"
+      },
+      {
+        "id": "male_illustration",
+        "title": "Illustration",
+        "thumb": "https://cdn.perfectcorp.com/cms/120d53d7-fccb-4ab1-b45f-f2966e9bf076/1720505218691/M_Illustration.jpg"
+      },
+      {
+        "id": "male_anime_film",
+        "title": "Anime Film",
+        "thumb": "https://cdn.perfectcorp.com/cms/89f1d542-4f76-4498-9e5b-9bd9bcbaf574/1720505344393/M_Japanese_Anime.jpg"
+      },
+      {
+        "id": "male_spider_hero",
+        "title": "Spider Hero",
+        "thumb": "https://cdn.perfectcorp.com/cms/dfa65151-b430-4545-8530-bac31d8d3db4/1720507025375/M_Cartoon.jpg"
+      },
+      {
+        "id": "male_pencil_artwork",
+        "title": "Pencil Artwork",
+        "thumb": "https://cdn.perfectcorp.com/cms/4e264691-5748-4acd-9b16-a0ae5992955b/1722562578921/thumb2.jpg"
+      }
+    ],
+    "Imaginary": [
+      {
+        "id": "male_royal",
+        "title": "Royal",
+        "thumb": "https://cdn.perfectcorp.com/cms/0688858c-129d-4637-b2d9-fa01f37c5e6b/1722561549963/M_Royal.jpg"
+      },
+      {
+        "id": "male_sci_fi",
+        "title": "Sci-fi",
+        "thumb": "https://cdn.perfectcorp.com/cms/f14d0468-acc7-4819-859f-551b76f829b5/1720495651277/2 (1).jpg"
+      },
+      {
+        "id": "male_eastern_classic",
+        "title": "Eastern Classic",
+        "thumb": "https://cdn.perfectcorp.com/cms/b8a4be9d-d6d3-4e0b-bec9-f8359c6808ca/1720506531947/M-Eastern class.jpg"
+      },
+      {
+        "id": "male_fantasy",
+        "title": "Fantasy",
+        "thumb": "https://cdn.perfectcorp.com/cms/a799a998-8edf-4a7f-b95d-8c9532fafdb9/1720507594137/M_Fantasy.jpg"
+      },
+      {
+        "id": "male_vikings",
+        "title": "Vikings",
+        "thumb": "https://cdn.perfectcorp.com/cms/211ef9dc-4fba-4152-a635-1fc708ef8fe9/1722495479792/M_Vikings.jpg"
+      },
+      {
+        "id": "male_comic",
+        "title": "Comic",
+        "thumb": "https://cdn.perfectcorp.com/cms/efb56084-bfca-402f-82bc-06bbe26f65e1/1721374790326/M_Comic.jpg"
+      }
+    ],
+    "Holiday": [
+      {
+        "id": "male_dream_date",
+        "title": "Dream Date",
+        "thumb": "https://cdn.perfectcorp.com/cms/55a068a0-5b01-44e2-9c62-797a15e29f04/1721379656337/Dream date_432_576.jpg"
+      },
+      {
+        "id": "male_jingle_bell",
+        "title": "Jingle Bell",
+        "thumb": "https://cdn.perfectcorp.com/cms/c48d66b4-c93d-4afd-860b-f1942f43a1fc/1721363523033/M_Jingle Bells.png"
+      },
+      {
+        "id": "male_nye_sparks",
+        "title": "NYE Sparks",
+        "thumb": "https://cdn.perfectcorp.com/cms/c496581e-ee9e-455c-9518-99f491277fc0/1721374247012/M_NYE Spark.jpg"
+      }
+    ]
+  },
+  "female": {
+    "Anime": [
+      {
+        "id": "female_manga_mood",
+        "title": "Manga Mood",
+        "thumb": "https://cdn.perfectcorp.com/cms/a2483f9c-0853-451e-ba56-f9370f50bc12/1744281642097/file.png"
+      }
+    ],
+    "Ghost": [
+      {
+        "id": "female_gothic",
+        "title": "Gothic",
+        "thumb": "https://cdn.perfectcorp.com/cms/6c59c77a-5415-4395-9a48-98fe38255e6f/1721379785547/Gothic_432_576.jpg"
+      },
+      {
+        "id": "female_stained_glass",
+        "title": "Stained Glass",
+        "thumb": "https://cdn.perfectcorp.com/cms/d5e25b6d-3929-47e6-a92a-9e08cb0c5ce9/1725261366513/Stained Glass.jpg"
+      },
+      {
+        "id": "female_eerie_craze",
+        "title": "Eerie Craze",
+        "thumb": "https://cdn.perfectcorp.com/cms/92ff2fb5-df77-4537-9cc7-ff1efbf41f28/1720575911249/Eerie Craze.png"
+      },
+      {
+        "id": "female_specter_queen",
+        "title": "Specter Queen",
+        "thumb": "https://cdn.perfectcorp.com/cms/c05c23c9-2e9d-41f3-8618-5f4b039fc7f8/1721374386176/Spector queen.jpg"
+      },
+      {
+        "id": "female_calavera_art",
+        "title": "Calavera Art",
+        "thumb": "https://cdn.perfectcorp.com/cms/386b06a0-0330-4aa7-a42f-36ba8a62cc3c/1725244459335/La_Catrina.jpg"
+      },
+      {
+        "id": "female_wicked_whiskers",
+        "title": "Wicked Whiskers",
+        "thumb": "https://cdn.perfectcorp.com/cms/73c88809-998c-44cc-8ec4-8a401e4215e8/1720495707409/未命名-2 (1).jpg"
+      }
+    ],
+    "Trendy": [
+      {
+        "id": "female_arcana",
+        "title": "Arcana",
+        "thumb": "https://cdn.perfectcorp.com/cms/3285162b-97c6-425b-ac10-c68780e4002b/1732847049183/F-Arcana-red-west.jpg"
+      },
+      {
+        "id": "female_rosette",
+        "title": "Rosette",
+        "thumb": "https://cdn.perfectcorp.com/cms/f0d74e99-15b0-4330-932f-b8309692d7d7/1735290908331/Valentine's Day_01_W.jpg"
+      },
+      {
+        "id": "female_pink_crush",
+        "title": "Pink Crush",
+        "thumb": "https://cdn.perfectcorp.com/cms/3969755f-c818-45ae-96d6-26debb164d7a/1735291124851/Valentine's Day_02_W.jpg"
+      },
+      {
+        "id": "female_iconic_doll",
+        "title": "Iconic Doll",
+        "thumb": "https://cdn.perfectcorp.com/cms/4ed082e4-3719-40b3-8f0a-08ff32e593e4/1720508393812/Iconic doll.jpg"
+      },
+      {
+        "id": "female_stylish",
+        "title": "Stylish",
+        "thumb": "https://cdn.perfectcorp.com/cms/cd2e79c4-7a7a-453a-ad8f-934ff4d04383/1720576016762/Stylish.png"
+      },
+      {
+        "id": "female_k_pop_star",
+        "title": "K-Pop Star",
+        "thumb": "https://cdn.perfectcorp.com/cms/be3e8df2-1b71-417e-8b7b-985efab17efb/1721379648312/K-Pop_432_576.jpg"
+      },
+      {
+        "id": "female_furry_grouch",
+        "title": "Furry Grouch",
+        "thumb": "https://cdn.perfectcorp.com/cms/0ed0f1a6-f718-47fd-8b02-654b70f2e253/1731985125883/thumb .jpg"
+      }
+    ],
+    "Lifestyle": [
+      {
+        "id": "female_chill_chaser",
+        "title": "Chill Chaser",
+        "thumb": "https://cdn.perfectcorp.com/cms/a386b009-1645-4943-8883-0bc79eee9cb4/1731402968998/Winter.jpg"
+      },
+      {
+        "id": "female_cute_kid",
+        "title": "Cute Kid",
+        "thumb": "https://cdn.perfectcorp.com/cms/ab2a5545-c21a-43fb-b10d-afca3f53c53a/1720505971503/Cute kid.jpg"
+      },
+      {
+        "id": "female_nature",
+        "title": "Nature",
+        "thumb": "https://cdn.perfectcorp.com/cms/4139c6d4-495c-44b4-8999-7b4774dbfdd8/1720495762572/1.jpg"
+      },
+      {
+        "id": "female_yearbook",
+        "title": "Yearbook",
+        "thumb": "https://cdn.perfectcorp.com/cms/f2ba3627-d1c9-48c0-94d3-66e25ffbb222/1720506430204/F-Yearbook.jpg"
+      },
+      {
+        "id": "female_celestial",
+        "title": "Celestial",
+        "thumb": "https://cdn.perfectcorp.com/cms/97244262-aaaf-4f94-9074-b8a4c164c971/1722561410424/Celestial.jpg"
+      },
+      {
+        "id": "female_mellow",
+        "title": "Mellow",
+        "thumb": "https://cdn.perfectcorp.com/cms/c16cb60c-216e-4a95-b46a-92fb1f6f3230/1721374411607/Cute.jpg"
+      }
+    ],
+    "Imaginary": [
+      {
+        "id": "female_eastern_classic",
+        "title": "Eastern Classic",
+        "thumb": "https://cdn.perfectcorp.com/cms/afb4890d-dc8b-41d5-afc3-4f309a7c3fc7/1720506390965/F-Eastern class.jpg"
+      },
+      {
+        "id": "female_royal",
+        "title": "Royal",
+        "thumb": "https://cdn.perfectcorp.com/cms/f06fbadd-a51d-4446-a9f4-3f648b387bb9/1722561559741/Royal.jpg"
+      },
+      {
+        "id": "female_egypt",
+        "title": "Egypt",
+        "thumb": "https://cdn.perfectcorp.com/cms/b84bf9ce-2007-46e2-a43b-c6f113cb5ebc/1721984930744/未命名-9 (1).jpg"
+      },
+      {
+        "id": "female_fantasy",
+        "title": "Fantasy",
+        "thumb": "https://cdn.perfectcorp.com/cms/7bd06dac-1dcd-43ee-a0b8-4190ba46a1fc/1722561435324/Fantasy.jpg"
+      },
+      {
+        "id": "female_sci_fi",
+        "title": "Sci-fi",
+        "thumb": "https://cdn.perfectcorp.com/cms/ff2152fa-4a7d-41b7-afd6-623851808db5/1720495820440/3 (1).jpg"
+      },
+      {
+        "id": "female_unicorn",
+        "title": "Unicorn",
+        "thumb": "https://cdn.perfectcorp.com/cms/c502cf17-facc-4ef4-b851-af763fad0da0/1757389093978/file.jpg"
+      },
+      {
+        "id": "female_vikings",
+        "title": "Vikings",
+        "thumb": "https://cdn.perfectcorp.com/cms/dce27e95-54a3-44a3-b546-adaf322f1c53/1722420352962/432x576 (1).jpg"
+      },
+      {
+        "id": "female_japanese_muse",
+        "title": "Japanese Muse",
+        "thumb": "https://cdn.perfectcorp.com/cms/0345cb0a-11a6-4b3f-a116-fbc7e5638b21/1721363604789/Geisha.jpg"
+      },
+      {
+        "id": "female_fairy_princess",
+        "title": "Fairy Princess",
+        "thumb": "https://cdn.perfectcorp.com/cms/db8a0138-f687-4c93-815d-2ed2a83ae5a5/1722561419271/Fairy Princess.jpg"
+      }
+    ],
+    "Artistry": [
+      {
+        "id": "female_anime_film",
+        "title": "Anime Film",
+        "thumb": "https://cdn.perfectcorp.com/cms/8e811646-4717-4df2-be4b-2337901af99f/1720505394240/Japanese_Anime.jpg"
+      },
+      {
+        "id": "female_illustration",
+        "title": "Illustration",
+        "thumb": "https://cdn.perfectcorp.com/cms/fa45761e-bc8e-40a4-b84e-85b851e331f9/1720505464805/Illustration.jpg"
+      },
+      {
+        "id": "female_pop_art",
+        "title": "Pop Art",
+        "thumb": "https://cdn.perfectcorp.com/cms/93b4cea0-9ac6-49f5-9d35-e2f6d8369b8c/1720506315095/F-Pop-Art.jpg"
+      },
+      {
+        "id": "female_scarlet_web",
+        "title": "Scarlet Web",
+        "thumb": "https://cdn.perfectcorp.com/cms/642ede36-c25b-4af9-b082-16b95dcb2ca1/1720506700620/Cartoon.jpg"
+      },
+      {
+        "id": "female_artsy",
+        "title": "Artsy",
+        "thumb": "https://cdn.perfectcorp.com/cms/e2ab9d59-b1d8-4f01-a3dd-d6c153f25463/1721357867249/Artsy.jpg"
+      },
+      {
+        "id": "female_mosaic",
+        "title": "Mosaic",
+        "thumb": "https://cdn.perfectcorp.com/cms/4a86b851-e62c-4f95-8bb9-37e127650fc9/1721379624925/Mosaic_432_576.jpg"
+      },
+      {
+        "id": "female_pencil_artwork",
+        "title": "Pencil Artwork",
+        "thumb": "https://cdn.perfectcorp.com/cms/93e74910-dfef-4e07-93e9-603bc2d674d4/1722562456621/thumb.jpg"
+      }
+    ],
+    "Holiday": [
+      {
+        "id": "female_classic_countdown",
+        "title": "Classic Countdown",
+        "thumb": "https://cdn.perfectcorp.com/cms/9f5a52a3-b603-41c3-aa1f-1a9f0baee53e/1730263137826/New Year_01.png"
+      },
+      {
+        "id": "female_midnight_marvel",
+        "title": "Midnight Marvel",
+        "thumb": "https://cdn.perfectcorp.com/cms/e73b0ccc-0823-4b48-acd7-e197cc74c46c/1730263189108/New Year_02.png"
+      },
+      {
+        "id": "female_sweater_weather",
+        "title": "Sweater Weather",
+        "thumb": "https://cdn.perfectcorp.com/cms/9f80ba3a-3702-4795-b1ef-c2bd3f6ca995/1729849007421/Artistic_Holiday01_West.jpg"
+      },
+      {
+        "id": "female_christmas_couture",
+        "title": "Christmas Couture",
+        "thumb": "https://cdn.perfectcorp.com/cms/9bf3e9eb-38ee-4977-b14c-d9e14cd4efde/1729843989230/Artistic_Holiday02_West.jpg"
+      },
+      {
+        "id": "female_jingle_bell",
+        "title": "Jingle Bell",
+        "thumb": "https://cdn.perfectcorp.com/cms/33703a8a-f729-4e72-ba69-a5d86cfc4132/1722561519289/Jingle Bell.jpg"
+      },
+      {
+        "id": "female_gold_whisper",
+        "title": "Gold Whisper",
+        "thumb": "https://cdn.perfectcorp.com/cms/d67aada6-6c38-4694-94a8-2fb8b6813622/1721363553809/Angel.png"
+      },
+      {
+        "id": "female_nye_sparks",
+        "title": "NYE Sparks",
+        "thumb": "https://cdn.perfectcorp.com/cms/b8045531-c846-442e-b352-c3a431056128/1721374445359/NYE Spark.jpg"
+      }
+    ]
+  }
+}

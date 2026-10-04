@@ -1,3 +1,22 @@
 frontend/node_modules
 frontend/dist
 .DS_Store
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+*.tfplan
+.env
+.env.*
+!.env.example
+# User-provided personal image; never include it in exports or builds.
+/image.png
+# Enabled locally after the first state-bucket bootstrap.
+/infra/terraform/frontend/backend.tf
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.db
+backend/eval-results/

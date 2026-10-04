@@ -1,0 +1,5 @@
+metrics_to_run:
+  - personalized_trip_quality
+custom_metrics:
+  - name: personalized_trip_quality
+    custom_function_file: metrics.py

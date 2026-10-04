@@ -1,0 +1,11 @@
+*
+!Dockerfile
+!requirements.txt
+!*.py
+!assets/
+!assets/**
+!cloudbuild.yaml
+!.gcloudignore
+__pycache__/
+tests/
+.env*

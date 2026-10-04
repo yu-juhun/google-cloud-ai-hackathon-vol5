@@ -1,0 +1,9 @@
+fastapi==0.141.1
+uvicorn[standard]==0.30.6
+google-genai==2.23.0
+pydantic==2.13.5
+requests==2.34.2
+cryptography==50.0.1
+websockets==13.1
+google-cloud-storage>=3,<4
+Pillow>=11,<13

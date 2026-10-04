@@ -1,0 +1,5 @@
+terraform {
+  # Copy to backend.tf only after the state bucket has been created.
+  # Supply bucket and prefix with -backend-config; do not commit personal values.
+  backend "gcs" {}
+}

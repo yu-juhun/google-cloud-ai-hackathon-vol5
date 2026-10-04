@@ -1,0 +1,35 @@
+server {
+    listen 0.0.0.0:${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+    server_tokens off;
+
+    location = /config.js {
+        default_type application/javascript;
+        add_header Cache-Control "no-store";
+        return 200 'window.MICHIBIKI_API_URL = "${BACKEND_URL}";';
+    }
+
+    location = /health {
+        access_log off;
+        default_type text/plain;
+        return 200 'ok\n';
+    }
+
+    location /assets/ {
+        try_files $uri =404;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /images/ {
+        try_files $uri =404;
+        expires 1h;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        add_header Cache-Control "no-cache";
+    }
+}

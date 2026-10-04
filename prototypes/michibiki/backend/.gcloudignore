@@ -1,0 +1,8 @@
+*
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!michibiki/
+!michibiki/**
+!cloudbuild.yaml
+**/__pycache__/**

@@ -1,0 +1,123 @@
+/* Layout only — every value here is a var(--token) from ../styles/tokens.css.
+ * Swapping the visual "design concept" later means replacing tokens.css
+ * with a different design-systems/<slug> package; this file should never
+ * need to change for that. */
+
+.avatar-panel {
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--elev-raised);
+  padding: var(--space-6);
+}
+
+.avatar-panel__header {
+  text-align: center;
+}
+
+.avatar-panel__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.avatar-panel__step {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.avatar-panel__step-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.avatar-panel__avatar-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.avatar-panel__avatar-image {
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border);
+  object-fit: cover;
+}
+
+.avatar-panel__upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.avatar-panel__controls {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.avatar-panel__controls > * {
+  flex: 1;
+}
+
+/* .avatar-panel__result layout on top of ui/Card's surface/border/radius */
+.avatar-panel__result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg);
+}
+
+.avatar-panel__summary {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--fg);
+}
+
+.avatar-panel__attributes {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.avatar-panel__attribute {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.avatar-panel__attribute-category {
+  font-weight: 600;
+  color: var(--fg);
+}
+
+.avatar-panel__attribute-description {
+  color: var(--fg-2);
+}
+
+.avatar-panel__attribute-keywords {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
