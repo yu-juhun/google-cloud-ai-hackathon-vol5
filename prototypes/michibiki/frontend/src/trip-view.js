@@ -1,3 +1,5 @@
+import { avatarFor } from './avatar-fallback'
+
 const photos = [
   '/images/guide-station-entry.png', '/images/guide-gyoko-route.png',
   '/images/guide-nakadori-crowd.png', '/images/guide-parklet-cafe.png',
@@ -39,7 +41,7 @@ export function travelersFor(result, count, avatars = []) {
       role: twin?.assignment?.role || '旅先を調査中',
       place: place?.name || (result ? '候補地点' : '候補を探しています'),
       status: done ? 'done' : failed ? 'failed' : 'exploring',
-      x: positions[i][0], y: positions[i][1], avatar: avatars[i],
+      x: positions[i][0], y: positions[i][1], avatar: avatarFor(i, avatars[i]),
       note, thought: note, tag: failed ? '結果なし' : first?.status === 'not_accessible' ? '条件に合わない' : done ? 'レポート到着' : '調査中',
       detail: {
         image: photos[i], result: note,

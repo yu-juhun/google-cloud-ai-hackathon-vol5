@@ -44,10 +44,10 @@ class Plan(BaseModel):
 
 class DimensionEvidence(BaseModel):
     kind: Literal["entrance_width", "step_height", "elevator_door_width"]
-    value_cm: float = Field(ge=0, le=2000)
-    point: str = Field(min_length=1, max_length=160)
-    quote: str = Field(min_length=1, max_length=500)
-    source_ids: list[str] = Field(min_length=1, max_length=5)
+    value_cm: float
+    point: str
+    quote: str
+    source_ids: list[str]
 
 
 class Assessment(BaseModel):
@@ -59,7 +59,7 @@ class Assessment(BaseModel):
     fit_reason: str
     precautions: list[str]
     source_ids: list[str] = Field(default_factory=list)
-    dimensions: list[DimensionEvidence] = Field(default_factory=list, max_length=6)
+    dimensions: list[DimensionEvidence] = Field(default_factory=list)
 
 
 class AssessmentBatch(BaseModel):

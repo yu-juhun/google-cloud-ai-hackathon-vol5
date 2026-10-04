@@ -9,6 +9,8 @@ def compact(value):
 
 def measurement_supported(item, claims, place_name):
     quote = compact(item["quote"])
+    if not quote or not item["point"] or not item["source_ids"] or not 0 <= item["value_cm"] <= 2000:
+        return False
     terms = {"entrance_width": r"入口|出入口|扉|ドア|有効幅", "step_height": r"段差",
              "elevator_door_width": r"エレベーター|昇降機"}
     if not re.search(terms[item["kind"]], quote):
@@ -24,7 +26,7 @@ def measurement_supported(item, claims, place_name):
 
 def apply_condition_checks(assessment, profile, evidence, place_name):
     valid = {source["id"] for source in evidence.get("sources", [])}
-    dimensions = [d for d in assessment.get("dimensions", [])
+    dimensions = [d for d in assessment.get("dimensions", [])[:6]
                   if set(d["source_ids"]).issubset(valid)
                   and measurement_supported(d, evidence.get("claims", []), place_name)]
     assessment["dimensions"] = dimensions

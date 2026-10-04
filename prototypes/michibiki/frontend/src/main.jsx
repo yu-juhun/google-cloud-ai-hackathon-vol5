@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import LiveTrip from './LiveTrip'
 import ExperienceReport, { SearchEvidence, conditionSummary } from './ExperienceReport'
+import { avatarTone } from './avatar-fallback'
 import TwinFleet from './TwinFleet'
 import AvatarSetup, { useAvatarSet } from './AvatarSetup'
 import VoiceConsultation from './VoiceConsultation'
@@ -41,7 +42,7 @@ const defaultAvatar = '/images/agent-hinata.png'
 const initialProfile = { chair: '手動車いす', width: '70', step: '2', stamina: '20', companion: 'ひとり', home: '出発地を設定してください', notes: '', priorities: ['広い通路', '休憩できるベンチ', '多目的トイレ'], avatar: defaultAvatar }
 
 function Portrait({ agent, large = false }) {
-  return <span className={`portrait ${large ? 'large' : ''}`}><img src={agent?.avatar || imageFor(agent?.status ?? 'done')} alt="" /></span>
+  return <span className={`portrait ${large ? 'large' : ''}`} style={agent?.ordinal ? { borderColor: avatarTone(agent.ordinal - 1) } : undefined}><img src={agent?.avatar || imageFor(agent?.status ?? 'done')} alt="" /></span>
 }
 
 function App() {
