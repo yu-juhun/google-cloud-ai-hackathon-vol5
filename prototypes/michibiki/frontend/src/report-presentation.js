@@ -1,9 +1,5 @@
 export const cleanReportText = text => (text || '').replace(/\(?source-\d+(?:\s*[,、]\s*source-\d+)*\)?/g, '').trim()
 
-export function measuredChecks(report) {
-  return (report.condition_checks || []).filter(check => check.status !== 'unverified')
-}
-
 export function equipmentSummary(result) {
   const places = new Map((result.places || []).map(place => [place.place_id, place]))
   const selected = [...new Set(result.itinerary.stops.map(stop => stop.place_id))].map(id => places.get(id)).filter(Boolean)

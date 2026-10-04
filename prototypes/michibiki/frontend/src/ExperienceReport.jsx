@@ -1,4 +1,4 @@
-import { cleanReportText, measuredChecks, equipmentSummary, featuredCautions } from './report-presentation'
+import { cleanReportText, equipmentSummary, featuredCautions } from './report-presentation'
 
 const safeUrl = value => /^https?:\/\//.test(value || '') ? value : null
 
@@ -9,7 +9,6 @@ export default function ExperienceReport({ agent }) {
   const facilities = [['入口', 'wheelchairAccessibleEntrance'], ['トイレ', 'wheelchairAccessibleRestroom'], ['座席', 'wheelchairAccessibleSeating'], ['駐車場', 'wheelchairAccessibleParking']]
   const sources = (agent.detail.research?.sources || []).filter(source => report.source_ids?.includes(source.id) && safeUrl(source.url))
   const keyFacts = report.facts.filter(text => !/^(名称|住所|所在地)(は|：|:)/.test(text))
-  const measurements = measuredChecks(report)
   const knownFacilities = facilities.filter(([, key]) => typeof options[key] === 'boolean')
   const cautions = featuredCautions(report)
   return <div className="readable-report">
@@ -17,14 +16,13 @@ export default function ExperienceReport({ agent }) {
     <h3>{cleanReportText(report.experience.split(/(?<=。)/)[0])}</h3>
     <p className="report-fit">{cleanReportText((report.fit_reason || report.experience).split(/(?<=。)/).slice(0, 2).join(''))}</p>
     {!!knownFacilities.length && <div className="facility-grid" aria-label="Google Mapsの車いす対応情報">{knownFacilities.map(([label, key]) => <span key={key} className={options[key] === true ? 'available' : ''}><small>{label}</small><b>{options[key] === true ? '対応情報あり' : '対応なしの情報'}</b></span>)}</div>}
-    {!!measurements.length && <section className="condition-checks" aria-label="あなたの通行条件との比較"><h4>寸法の根拠が見つかった箇所</h4>{measurements.map((check, i) => <article key={`${check.kind}-${i}`} className={check.status}><header><b>{check.label}</b><span>{check.status === 'within_condition' ? '数値上は条件内' : check.status === 'outside_condition' ? 'この箇所は条件外' : '数値の記載は未確認'}</span></header><p>{check.detail}</p>{check.quote && <details><summary>数値の根拠を見る</summary><blockquote>{check.quote}</blockquote>{(agent.detail.research?.sources || []).filter(source => check.source_ids.includes(source.id) && safeUrl(source.url)).map(source => <a key={source.id} href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</details>}</article>)}</section>}
     <div className="report-highlights">
       {!!keyFacts.length && <section><h4>✓ 旅先を選ぶポイント</h4><ul>{keyFacts.slice(0, 3).map((text, i) => <li key={i}>{cleanReportText(text)}</li>)}</ul></section>}
       {!!cautions.length && <section className="report-cautions"><h4>! 訪問するときのポイント</h4><ul>{cautions.map((text, i) => <li key={i}>{text}</li>)}</ul></section>}
     </div>
     {!!sources.length && <p className="report-sources">このレポートの出典：{sources.map(source => <a key={source.id} href={source.url} target="_blank" rel="noreferrer">{source.title} ↗</a>)}</p>}
-    <details className="report-full"><summary>根拠と確認事項をすべて読む</summary><p>{report.experience}</p><ul>{[...report.facts, ...report.unknowns, ...report.precautions].map((text, i) => <li key={i}>{text}</li>)}</ul>{safeUrl(report.place?.maps_url) && <a href={report.place.maps_url} target="_blank" rel="noreferrer">Google Mapsの施設情報を見る ↗</a>}</details>
-    {agent.detail.reports.length > 1 && <details className="report-full"><summary>ほかの{agent.detail.reports.length - 1}候補のレポート</summary>{agent.detail.reports.slice(1).map(item => <section key={item.place_id}><h4>{item.place?.name || '候補地点'}</h4><p>{item.experience}</p><ul>{item.unknowns.map((text, i) => <li key={i}>{text}</li>)}</ul></section>)}</details>}
+    <details className="report-full"><summary>施設の情報を詳しく読む</summary><p>{report.experience}</p><ul>{[...report.facts, ...report.precautions].map((text, i) => <li key={i}>{text}</li>)}</ul>{safeUrl(report.place?.maps_url) && <a href={report.place.maps_url} target="_blank" rel="noreferrer">Google Mapsの施設情報を見る ↗</a>}</details>
+    {agent.detail.reports.length > 1 && <details className="report-full"><summary>ほかの{agent.detail.reports.length - 1}候補のレポート</summary>{agent.detail.reports.slice(1).map(item => <section key={item.place_id}><h4>{item.place?.name || '候補地点'}</h4><p>{item.experience}</p><ul>{[...item.facts, ...item.precautions].map((text, i) => <li key={i}>{text}</li>)}</ul></section>)}</details>}
   </div>
 }
 
