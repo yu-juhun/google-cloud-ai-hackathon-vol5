@@ -1,0 +1,50 @@
+name: Persona agent
+
+on:
+  pull_request:
+    paths:
+      - 'persona-agent-backend/**'
+      - 'persona-agent-frontend/**'
+      - '.github/workflows/persona-agent.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'persona-agent-backend/**'
+      - 'persona-agent-frontend/**'
+      - '.github/workflows/persona-agent.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: persona-agent-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+
+  frontend-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: persona-agent-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: persona-agent-frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: persona-agent-frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run build
+      - run: pnpm run test
