@@ -42,6 +42,14 @@ class Plan(BaseModel):
     clarification: str = Field(default="", max_length=500)
 
 
+class DimensionEvidence(BaseModel):
+    kind: Literal["entrance_width", "step_height", "elevator_door_width"]
+    value_cm: float = Field(ge=0, le=2000)
+    point: str = Field(min_length=1, max_length=160)
+    quote: str = Field(min_length=1, max_length=500)
+    source_ids: list[str] = Field(min_length=1, max_length=5)
+
+
 class Assessment(BaseModel):
     place_id: str
     status: Literal["uncertain", "accessible", "not_accessible"]
@@ -51,6 +59,7 @@ class Assessment(BaseModel):
     fit_reason: str
     precautions: list[str]
     source_ids: list[str] = Field(default_factory=list)
+    dimensions: list[DimensionEvidence] = Field(default_factory=list, max_length=6)
 
 
 class AssessmentBatch(BaseModel):
@@ -67,6 +76,7 @@ class Stop(BaseModel):
 
 class Itinerary(BaseModel):
     title: str
+    hero_title: str = Field(default="", max_length=48)
     summary: str
     stops: list[Stop] = Field(min_length=1, max_length=6)
     unknowns: list[str]

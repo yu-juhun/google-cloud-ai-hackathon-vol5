@@ -7,11 +7,11 @@ from michibiki.contracts import Itinerary
 async def test_judge_uses_alias_and_restores_verified_place_id(monkeypatch):
     async def generate(model, instruction, payload, schema):
         assert payload["places"][0]["place_id"] == "candidate_1"
-        return {"assessments": [{"place_id": "candidate_1"}]}
+        return {"assessments": [{"place_id": "candidate_1", "status": "uncertain", "facts": [], "unknowns": [], "fit_reason": "確認が必要です。"}]}
 
     monkeypatch.setattr(agents, "generate", generate)
     answer = await agents.specialist(
-        "judge", {"places": [{"place_id": "actual-place-id"}]}
+        "judge", {"places": [{"place_id": "actual-place-id", "name": "確認用施設"}], "profile": {"width": 70, "step": 2}}
     )
     assert answer["assessments"][0]["place_id"] == "actual-place-id"
 
