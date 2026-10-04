@@ -123,7 +123,7 @@ function LegacyLanding({ onStart }) {
 function Landing({ onStart }) {
   return <>
     <header className="journey-hero" id="content">
-      <div className="journey-hero-copy"><p>行ってみたい。その気持ちに、もうひとりの自分を。</p><h1><span>わたしを増やして、</span><em>旅に出よう。</em></h1><p className="journey-lead"><span>気になるカフェも、推しのあの場所も。</span><span>仮想の自分に、ひと足先の冒険を。</span><span>届いた体験レポートを開けば、</span><span>「行けるかな」が「行ってみたい」に。</span></p><div className="hero-value-pills"><span>最大10人のわたし</span><span>もうひとりの自分から</span><span>あなたらしい一日</span></div><button className="journey-button" onClick={onStart}><span>旅の相棒たちを、先に送り出す</span><i>→</i></button></div>
+      <div className="journey-hero-copy"><p>行ってみたい。その気持ちに、もうひとりの自分を。</p><h1><span>未来のわたしから、</span><em>旅のお便り。</em></h1><p className="journey-lead"><span>気になるカフェも、推しのあの場所も。</span><span>仮想の自分に、ひと足先の冒険を。</span><span>届いた体験レポートを開けば、</span><span>「行けるかな」が「行ってみたい」に。</span></p><div className="hero-value-pills"><span>最大10人のわたし</span><span>もうひとりの自分から</span><span>あなたらしい一日</span></div><button className="journey-button" onClick={onStart}><span>旅の相棒たちを、先に送り出す</span><i>→</i></button></div>
       <figure className="journey-hero-photo"><img src="/images/hero-spring-day-trip.png" alt="旅先で過ごす自分を想像するためのイメージ" /><figcaption><b>未来のわたしから、旅のお便り。</b><span>楽しみも、気がかりも。あなたを知る旅の相棒と、次の「行ってみたい」を見つけよう。</span></figcaption></figure>
     </header>
     <section className="question-section reveal"><p>目的地を決める前に、<br />確かめたいことがある。</p><div className="question-cards"><span><i>↔</i><b>入口は通れる？</b><small>幅と段差を確認</small></span><span><i>☕</i><b>途中で休める？</b><small>席と導線を確認</small></span><span><i>◌</i><b>混んでいたら動ける？</b><small>人の流れを確認</small></span></div></section>
