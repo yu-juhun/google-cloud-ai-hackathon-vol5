@@ -48,7 +48,7 @@ async def execute(payload: dict):
     if ROLE == "orchestrator":
         if payload.get("op") == "details":
             return await rpc("search", payload)
-        async with asyncio.timeout(220):
+        async with asyncio.timeout(800):
             return await pipeline(payload)
     return await specialist(ROLE, payload)
 
@@ -84,12 +84,12 @@ async def create_mission(request: MissionInput):
             },
         )
     try:
-        async with asyncio.timeout(240):
+        async with asyncio.timeout(840):
             result = await rpc("orchestrator", request.model_dump())
             await experience_images.generate(
                 result,
                 mission["id"],
-                budget=min(120, max(1, 235 - (time.monotonic() - started))),
+                budget=min(300, max(1, 835 - (time.monotonic() - started))),
             )
             result["timings"]["request_ms"] = round((time.monotonic() - started) * 1000)
             transient_places = result["places"]
@@ -120,7 +120,7 @@ async def create_mission(request: MissionInput):
             502,
             {
                 "mission_id": mission["id"],
-                "message": "分析に失敗しました。条件やAPI設定を確認してください。",
+                "message": "旅の分析を完了できませんでした。時間をおいて、もう一度お試しください。",
             },
         )
 
