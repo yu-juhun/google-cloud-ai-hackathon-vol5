@@ -50,7 +50,7 @@ def test_migration_and_idempotency(database):
     with database.connect() as conn:
         assert conn.execute(select(func.count()).select_from(db.missions)).scalar() == 1
         assert (
-            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 2
+            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 3
         )
 
 
