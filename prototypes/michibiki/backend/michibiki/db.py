@@ -94,6 +94,19 @@ consultations = Table(
     Column("body", json_type, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
+video_jobs = Table(
+    "video_jobs", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("client_hash", String(64), nullable=False),
+    Column("report_id", String(36), ForeignKey("reports.id"), nullable=False),
+    Column("feedback", String, nullable=False),
+    Column("style", String, nullable=False),
+    Column("tone", String, nullable=False),
+    Column("provider_operation_name", String),
+    Column("status", String, nullable=False),  # queued / generating / rendering / ready / failed
+    Column("object_name", String),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
 
 
 def now():
@@ -137,10 +150,14 @@ def migrate(db=None):
                 avatar_sets.create(conn, checkfirst=True)
                 consultations.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=2))
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 3)).first():
+                video_jobs.create(conn, checkfirst=True)
+                conn.execute(insert(migrations).values(version=3))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
         conn.execute(insert(migrations).values(version=2))
+        conn.execute(insert(migrations).values(version=3))
 
 
 def save_profile(conditions):
@@ -315,6 +332,42 @@ def update_avatar_set(set_id, status, assets=None):
     with engine().begin() as conn:
         conn.execute(update(avatar_sets).where(avatar_sets.c.id == set_id)
                      .values(status=status, assets=assets))
+
+
+def create_video_job(client_hash, report_id, feedback, style, tone):
+    record = dict(id=str(uuid4()), client_hash=client_hash, report_id=report_id,
+                  feedback=feedback, style=style, tone=tone, status="queued", created_at=now())
+    with engine().begin() as conn:
+        conn.execute(insert(video_jobs).values(**record))
+    return record
+
+
+def get_video_job(job_id, client_hash):
+    with engine().connect() as conn:
+        record = conn.execute(select(video_jobs).where(
+            video_jobs.c.id == job_id, video_jobs.c.client_hash == client_hash,
+        )).mappings().first()
+    return dict(record) if record else None
+
+
+def update_video_job(job_id, status, provider_operation_name=None, object_name=None):
+    values = {"status": status}
+    if provider_operation_name is not None:
+        values["provider_operation_name"] = provider_operation_name
+    if object_name is not None:
+        values["object_name"] = object_name
+    with engine().begin() as conn:
+        conn.execute(update(video_jobs).where(video_jobs.c.id == job_id).values(**values))
+
+
+def find_active_video_job(client_hash, report_id):
+    with engine().connect() as conn:
+        record = conn.execute(select(video_jobs).where(
+            video_jobs.c.client_hash == client_hash,
+            video_jobs.c.report_id == report_id,
+            video_jobs.c.status.in_(("queued", "generating", "rendering")),
+        )).mappings().first()
+    return dict(record) if record else None
 
 
 def save_consultation(client_hash, body):
