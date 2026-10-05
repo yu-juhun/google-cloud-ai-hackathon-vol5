@@ -1,9 +1,12 @@
 /* One focused note, instead of a stack of overlapping reports. */
-.map-focus .agent { width: 118px; z-index: 7; }
+.map-focus .agent { width: 126px; z-index: 7; }
+.map-focus .agent-label { white-space: nowrap; }
 .map-focus .agent .bubble { display: none !important; }
 .map-focus .agent.selected { z-index: 10; }
 .map-focus .agent.selected .bubble,
 .map-focus .agent:focus-visible .bubble { display: block !important; pointer-events: none !important; }
+/* Completed notes are already visible in the side report; keep all pins readable. */
+.map-focus .agent.done .bubble { display: none !important; }
 .map-agent-links { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
 .map-agent-links line { stroke: #668daa; stroke-width: 1.5; stroke-dasharray: 3 3; opacity: .7; }
 .map-agent-links circle { fill: #fff; stroke: #668daa; stroke-width: 1.5; }
