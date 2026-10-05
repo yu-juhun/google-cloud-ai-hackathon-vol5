@@ -38,6 +38,11 @@ resource "google_project_iam_member" "vertex" {
   role     = "roles/aiplatform.user"
   member   = "serviceAccount:${google_service_account.runtime[each.key].email}"
 }
+resource "google_project_iam_member" "vertex_backend" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.runtime["backend"].email}"
+}
 resource "google_project_iam_member" "sql" {
   project = var.project_id
   role    = "roles/cloudsql.client"
@@ -266,6 +271,7 @@ resource "google_cloud_run_v2_service" "backend" {
       dynamic "env" {
         for_each = {
           SERVICE_ROLE             = "backend"
+          GOOGLE_CLOUD_PROJECT     = var.project_id
           ORCHESTRATOR_URL         = google_cloud_run_v2_service.orchestrator.uri
           FRONTEND_ORIGIN          = "${var.frontend_origin},http://localhost:5173,http://127.0.0.1:5173"
           INSTANCE_CONNECTION_NAME = google_sql_database_instance.app.connection_name
@@ -300,7 +306,8 @@ resource "google_cloud_run_v2_service" "backend" {
       }
     }
   }
-  depends_on = [google_project_iam_member.sql, google_secret_manager_secret_iam_member.db]
+  depends_on = [google_project_iam_member.sql, google_secret_manager_secret_iam_member.db,
+  google_project_iam_member.vertex_backend]
 }
 resource "google_cloud_run_v2_service_iam_member" "orchestrator" {
   name     = google_cloud_run_v2_service.orchestrator.name

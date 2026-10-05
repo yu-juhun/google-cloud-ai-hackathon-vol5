@@ -63,6 +63,33 @@ def test_find_active_video_job_only_matches_unfinished_status(database):
     assert db.find_active_video_job("hash-1", "report-1") is None
 
 
+def test_get_mission_profile_returns_none_when_report_unknown(database):
+    assert db.get_mission_profile("does-not-exist") is None
+
+
+def test_get_mission_profile_returns_profile_for_linked_report(database):
+    from uuid import uuid4
+
+    from sqlalchemy import insert
+
+    mission_id, twin_id, report_id = str(uuid4()), str(uuid4()), str(uuid4())
+    profile = {"chair": "手動車いす", "width": 70, "step": 2}
+    with database.begin() as conn:
+        conn.execute(insert(db.profiles).values(
+            owner_id=db.DEMO_OWNER, conditions=profile, version=1, updated_at=db.now(),
+        ))
+        conn.execute(insert(db.missions).values(
+            id=mission_id, owner_id=db.DEMO_OWNER, idempotency_key="key-1",
+            input_snapshot={"profile": profile, "trip": {}}, status="completed", created_at=db.now(),
+        ))
+        conn.execute(insert(db.twins).values(
+            id=twin_id, mission_id=mission_id, ordinal=1, role="r", assignment={}, status="completed",
+        ))
+        conn.execute(insert(db.reports).values(id=report_id, twin_id=twin_id, version=1, body={}))
+
+    assert db.get_mission_profile(report_id) == profile
+
+
 def test_video_jobs_table_survives_a_fresh_migration(tmp_path, monkeypatch):
     engine = create_engine(f"sqlite:///{tmp_path / 'fresh.db'}")
     monkeypatch.setattr(db, "engine", lambda: engine)

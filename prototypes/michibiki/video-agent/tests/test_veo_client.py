@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import veo_client
+from google.genai import types
 
 
 @patch("veo_client._build_client")
@@ -34,6 +35,9 @@ def test_video_task_status_still_generating(mock_build_client):
     assert status == "generating"
     assert video_bytes is None
     assert mime_type is None
+    call_args = fake_client.operations.get.call_args.args
+    assert isinstance(call_args[0], types.GenerateVideosOperation)
+    assert call_args[0].name == "operations/abc123"
 
 
 @patch("veo_client._build_client")
@@ -60,6 +64,23 @@ def test_video_task_status_failed(mock_build_client):
         error={"code": 3, "message": "Unsupported image format. Expected JPEG or PNG."},
         result=None,
     )
+    fake_client = MagicMock()
+    fake_client.operations.get.return_value = fake_operation
+    mock_build_client.return_value = fake_client
+
+    status, video_bytes, mime_type = veo_client.video_task_status("operations/abc123")
+
+    assert status == "failed"
+    assert video_bytes is None
+    assert mime_type is None
+
+
+@patch("veo_client._build_client")
+def test_video_task_status_rai_filtered_returns_failed(mock_build_client):
+    # Veo's responsible-AI filtering can finish the operation (done=True,
+    # error=None) but return zero generated videos.
+    fake_result = MagicMock(generated_videos=[])
+    fake_operation = MagicMock(done=True, error=None, result=fake_result)
     fake_client = MagicMock()
     fake_client.operations.get.return_value = fake_operation
     mock_build_client.return_value = fake_client

@@ -385,6 +385,21 @@ def find_active_video_job(client_hash, report_id):
     return dict(record) if record else None
 
 
+def get_mission_profile(report_id):
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(missions.c.input_snapshot)
+            .select_from(
+                reports.join(twins, reports.c.twin_id == twins.c.id)
+                .join(missions, twins.c.mission_id == missions.c.id)
+            )
+            .where(reports.c.id == report_id)
+        ).first()
+    if not row:
+        return None
+    return row[0].get("profile")
+
+
 def save_consultation(client_hash, body):
     record_id = str(uuid4())
     with engine().begin() as conn:

@@ -33,8 +33,8 @@ export default function VideoRequest({ twins }) {
     if (!jobId || videoUrl) return
     const origin = (import.meta.env.VITE_API_URL || window.MICHIBIKI_API_URL || '').replace(/\/$/, '')
     const wsUrl = origin.replace(/^http/, 'ws') + `/api/video-jobs/${jobId}/progress`
-    // Browsers don't support custom WS headers; send the client token as a query param instead.
-    const socket = new WebSocket(`${wsUrl}?client=${encodeURIComponent(clientToken())}`)
+    const socket = new WebSocket(wsUrl)
+    socket.onopen = () => socket.send(JSON.stringify({ type: 'hello', client_token: clientToken() }))
     socket.onmessage = event => {
       const message = JSON.parse(event.data)
       if (message.type === 'status') {

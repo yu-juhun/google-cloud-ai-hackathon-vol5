@@ -18,14 +18,18 @@ def _report_row():
     }
 
 
-def _avatar_row():
+def _avatar_row(mime_type=None):
+    asset = {"object_name": "avatars/avatar-1/0.png"}
+    if mime_type:
+        asset["mime_type"] = mime_type
     return {
         "id": "avatar-1",
         "status": "ready",
-        "assets": {"assets": [{"object_name": "avatars/avatar-1/0.png"}]},
+        "assets": {"assets": [asset]},
     }
 
 
+@patch("michibiki.db.get_mission_profile", return_value=None)
 @patch("michibiki.video._download_avatar_image", return_value=b"fake-image-bytes")
 @patch("michibiki.video.video_rpc", new_callable=AsyncMock)
 @patch("michibiki.video.check_relevance", return_value=(True, ""))
@@ -36,10 +40,10 @@ def _avatar_row():
 @patch("michibiki.db.get_report")  # see Step 3 note: this function is new, added in this task
 def test_create_video_job_success(
     mock_get_report, mock_find_active, mock_update, mock_find_avatar, mock_create,
-    mock_guard, mock_rpc, mock_download,
+    mock_guard, mock_rpc, mock_download, mock_profile,
 ):
     mock_get_report.return_value = _report_row()
-    mock_find_avatar.return_value = _avatar_row()
+    mock_find_avatar.return_value = _avatar_row(mime_type="image/jpeg")
     mock_create.return_value = {"id": "job-1", "status": "queued"}
     mock_rpc.return_value = {"operation_name": "operations/abc123"}
 
@@ -59,8 +63,85 @@ def test_create_video_job_success(
     assert body["feedback"] == "もっと明るく"
     assert body["style"] == "cinematic"
     assert body["tone"] == "calm"
-    assert body["image_mime_type"] == "image/png"
+    assert body["image_mime_type"] == "image/jpeg"  # uses the real avatar asset mime type
     mock_update.assert_called_once_with("job-1", "queued", provider_operation_name="operations/abc123")
+
+
+@patch("michibiki.db.get_mission_profile")
+@patch("michibiki.video._download_avatar_image", return_value=b"fake-image-bytes")
+@patch("michibiki.video.video_rpc", new_callable=AsyncMock)
+@patch("michibiki.video.check_relevance", return_value=(True, ""))
+@patch("michibiki.db.create_video_job")
+@patch("michibiki.db.find_latest_ready_avatar_set")
+@patch("michibiki.db.update_video_job")
+@patch("michibiki.db.find_active_video_job", return_value=None)
+@patch("michibiki.db.get_report")
+def test_create_video_job_populates_mobility_notes_from_profile(
+    mock_get_report, mock_find_active, mock_update, mock_find_avatar, mock_create,
+    mock_guard, mock_rpc, mock_download, mock_profile,
+):
+    mock_get_report.return_value = _report_row()
+    mock_find_avatar.return_value = _avatar_row()
+    mock_create.return_value = {"id": "job-1", "status": "queued"}
+    mock_rpc.return_value = {"operation_name": "operations/abc123"}
+    mock_profile.return_value = {"chair": "手動車いす", "width": 70, "step": 2}
+
+    response = client.post("/api/videos", json={
+        "report_id": "report-1", "feedback": "もっと明るく", "style": "cinematic",
+        "tone": "calm", "consent": True,
+    }, headers=HEADERS)
+
+    assert response.status_code == 200
+    body = mock_rpc.await_args.args[1]
+    assert body["mobility_notes"] == "車いす種別: 手動車いす、横幅: 70cm、通行可能な段差: 2cm"
+
+
+@patch("michibiki.db.get_mission_profile", return_value=None)
+@patch("michibiki.video._download_avatar_image", return_value=b"fake-image-bytes")
+@patch("michibiki.video.video_rpc", new_callable=AsyncMock)
+@patch("michibiki.video.check_relevance", return_value=(True, ""))
+@patch("michibiki.db.create_video_job")
+@patch("michibiki.db.find_latest_ready_avatar_set")
+@patch("michibiki.db.update_video_job")
+@patch("michibiki.db.find_active_video_job", return_value=None)
+@patch("michibiki.db.get_report")
+def test_create_video_job_marks_row_failed_when_video_rpc_raises(
+    mock_get_report, mock_find_active, mock_update, mock_find_avatar, mock_create,
+    mock_guard, mock_rpc, mock_download, mock_profile,
+):
+    from fastapi import HTTPException
+
+    mock_get_report.return_value = _report_row()
+    mock_find_avatar.return_value = _avatar_row()
+    mock_create.return_value = {"id": "job-1", "status": "queued"}
+    mock_rpc.side_effect = HTTPException(503, "動画生成APIに接続できませんでした。")
+
+    response = client.post("/api/videos", json={
+        "report_id": "report-1", "feedback": "もっと明るく", "style": "cinematic",
+        "tone": "calm", "consent": True,
+    }, headers=HEADERS)
+
+    assert response.status_code == 503
+    mock_update.assert_called_once_with("job-1", "failed")
+
+
+@patch("michibiki.video._genai_client")
+@patch("michibiki.video.check_relevance")
+@patch("michibiki.db.find_active_video_job", return_value=None)
+@patch("michibiki.db.get_report", return_value=_report_row())
+def test_create_video_job_503s_when_gemini_relevance_guard_errors(
+    mock_get_report, mock_find_active, mock_guard, mock_client,
+):
+    from google.genai import errors as genai_errors
+
+    mock_guard.side_effect = genai_errors.APIError(503, {"message": "boom"})
+
+    response = client.post("/api/videos", json={
+        "report_id": "report-1", "feedback": "もっと明るく", "style": "cinematic",
+        "tone": "calm", "consent": True,
+    }, headers=HEADERS)
+
+    assert response.status_code == 503
 
 
 def test_create_video_job_rejects_missing_consent():
@@ -125,6 +206,9 @@ def test_create_video_job_404s_when_no_ready_avatar_set(
     mock_create.assert_not_called()
 
 
+HELLO = {"type": "hello", "client_token": "a" * 40}
+
+
 @patch("michibiki.video._sign_video_url", return_value="https://signed.example/video.mp4")
 @patch("michibiki.video._upload_video")
 @patch("michibiki.video.video_rpc", new_callable=AsyncMock)
@@ -136,9 +220,8 @@ def test_progress_ws_sends_ready_status_and_closes(mock_get_job, mock_update_job
     mock_rpc.return_value = {"status": "ready", "video_bytes_b64": "Zm9v", "mime_type": "video/mp4"}
 
     with patch("michibiki.video.client_hash", return_value="x"):
-        with client.websocket_connect(
-            "/api/video-jobs/job-1/progress", headers=HEADERS,
-        ) as websocket:
+        with client.websocket_connect("/api/video-jobs/job-1/progress", headers={"origin": "http://localhost:5173"}) as websocket:
+            websocket.send_json(HELLO)
             first = websocket.receive_json()
             assert first["type"] == "status"
             assert first["status"] == "generating"
@@ -150,20 +233,67 @@ def test_progress_ws_sends_ready_status_and_closes(mock_get_job, mock_update_job
 
 @patch("michibiki.db.get_video_job", return_value=None)
 def test_progress_ws_closes_immediately_for_unknown_job(mock_get_job):
-    with client.websocket_connect("/api/video-jobs/does-not-exist/progress", headers=HEADERS) as websocket:
+    with client.websocket_connect("/api/video-jobs/does-not-exist/progress", headers={"origin": "http://localhost:5173"}) as websocket:
         import pytest
         from starlette.websockets import WebSocketDisconnect
+        websocket.send_json(HELLO)
         with pytest.raises(WebSocketDisconnect):
             websocket.receive_json()
 
 
-@patch("michibiki.db.get_video_job", return_value=None)
-def test_progress_ws_accepts_client_token_as_query_param(mock_get_job):
-    # Browsers can't set custom WS headers, so the client sends the token via
-    # ?client=... instead; the handler must accept it without a header present.
-    with client.websocket_connect("/api/video-jobs/job-1/progress?client=" + "a" * 40) as websocket:
-        import pytest
-        from starlette.websockets import WebSocketDisconnect
+def test_progress_ws_closes_for_missing_or_invalid_token():
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+    with client.websocket_connect("/api/video-jobs/job-1/progress", headers={"origin": "http://localhost:5173"}) as websocket:
+        websocket.send_json({"type": "hello", "client_token": "too-short"})
         with pytest.raises(WebSocketDisconnect):
-            websocket.receive_json()  # closes immediately since get_video_job returns None,
-            # but must not reject for a missing header
+            websocket.receive_json()
+
+
+def test_progress_ws_rejects_origin_mismatch(monkeypatch):
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+
+    monkeypatch.setenv("FRONTEND_ORIGIN", "https://allowed.example")
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            "/api/video-jobs/job-1/progress", headers={"origin": "https://evil.example"},
+        ) as websocket:
+            websocket.receive_json()
+
+
+@patch("michibiki.video._sign_video_url", return_value="https://signed.example/video.mp4")
+@patch("michibiki.db.get_video_job")
+def test_progress_ws_accepts_matching_origin(mock_get_job, mock_sign, monkeypatch):
+    monkeypatch.setenv("FRONTEND_ORIGIN", "https://allowed.example")
+    mock_get_job.return_value = {"id": "job-1", "client_hash": "x", "status": "ready",
+                                 "object_name": "videos/job-1"}
+    with patch("michibiki.video.client_hash", return_value="x"):
+        with client.websocket_connect(
+            "/api/video-jobs/job-1/progress", headers={"origin": "https://allowed.example"},
+        ) as websocket:
+            websocket.send_json(HELLO)
+            message = websocket.receive_json()
+            assert message["status"] == "ready"
+
+
+@patch("michibiki.video.video_rpc", new_callable=AsyncMock)
+@patch("michibiki.db.update_video_job")
+@patch("michibiki.db.get_video_job")
+def test_progress_ws_marks_job_failed_when_polling_raises(mock_get_job, mock_update_job, mock_rpc):
+    from fastapi import HTTPException
+
+    mock_get_job.return_value = {"id": "job-1", "client_hash": "x", "status": "generating",
+                                 "provider_operation_name": "operations/abc123"}
+    mock_rpc.side_effect = HTTPException(502, "動画生成APIに接続できませんでした。")
+
+    with patch("michibiki.video.client_hash", return_value="x"):
+        with client.websocket_connect(
+            "/api/video-jobs/job-1/progress", headers={"origin": "http://localhost:5173"},
+        ) as websocket:
+            websocket.send_json(HELLO)
+            first = websocket.receive_json()
+            assert first["status"] == "generating"
+            second = websocket.receive_json()
+            assert second["status"] == "failed"
+    mock_update_job.assert_called_once_with("job-1", "failed")

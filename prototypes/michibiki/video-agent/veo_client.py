@@ -53,10 +53,14 @@ def video_task_status(operation_name: str) -> tuple[str, bytes | None, str | Non
     polling cadence). Returns (status, video_bytes, mime_type); the latter
     two are only non-None when status == "ready"."""
     client = _build_client()
-    operation = client.operations.get(name=operation_name)
+    operation = client.operations.get(types.GenerateVideosOperation(name=operation_name))
     if not operation.done:
         return "generating", None, None
     if operation.error:
+        return "failed", None, None
+    if not operation.result or not operation.result.generated_videos:
+        # Veo's responsible-AI filtering can report done=True with no error
+        # and no generated videos; treat that the same as a failure.
         return "failed", None, None
     video = operation.result.generated_videos[0].video
     return "ready", video.video_bytes, video.mime_type
