@@ -23,7 +23,7 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
     logger.addHandler(handler)
 logger.propagate = False
-VERSION = "experience-demo-v1"
+VERSION = "experience-demo-v2"
 # Shared by requests in this process, not multiplied by each incoming mission.
 IMAGE_SLOTS = asyncio.Semaphore(2)
 
@@ -123,6 +123,15 @@ async def image_call(client, *, metadata, mission_id, ordinal, **kwargs):
 
 
 def scene_prompt(assessment, place):
+    exterior_check = assessment.get("status") == "not_accessible"
+    activity = (
+        "She is checking the destination entrance from a public sidewalk outside, "
+        "then thoughtfully planning her next stop. Keep her outside on a level public "
+        "sidewalk; do not show her entering, using the facility, or overcoming barriers. "
+        "Do not turn this into a successful visit or invent accessible equipment. "
+        if exterior_check
+        else "She is enjoying the activity described below at the researched destination. "
+    )
     personal_care = any(
         word in str(place.get("name", "")).lower()
         for word in ("トイレ", "restroom", "toilet", "washroom")
@@ -137,8 +146,9 @@ def scene_prompt(assessment, place):
     return (
         "Create one joyful, natural travel photograph-style illustration. Preserve the "
         "adult woman's face, hairstyle and manual wheelchair from the reference image, "
-        "but replace its background. She is enjoying the activity described below at "
-        "the researched destination in Japan. Warm daylight, candid smile, credible "
+        "but replace its background. The destination is in Japan. "
+        + activity
+        + "Warm daylight, natural expression, credible "
         "composition, no text or watermark. The destination is an illustrative "
         "interpretation, not a verified photograph. Do not invent accessibility "
         "measurements, ramps, special facilities, or depict inaccessible indoor entry. "
@@ -186,11 +196,13 @@ async def generate(result, mission_id, budget=120):
                     "status": "queued",
                     "place_id": assessment["place_id"],
                     "prompt_version": VERSION,
+                    "scene_kind": (
+                        "exterior_check"
+                        if assessment.get("status") == "not_accessible"
+                        else "experience"
+                    ),
                 }
                 twin["experience_image"] = metadata
-                if assessment.get("status") == "not_accessible":
-                    metadata.update(status="skipped", reason="not_accessible")
-                    return
                 try:
                     async with IMAGE_SLOTS:
                         metadata["status"] = "generating"

@@ -8,6 +8,16 @@ from michibiki import experience_images as images
 from sqlalchemy import create_engine
 
 
+def test_inaccessible_scene_checks_exterior_instead_of_successful_visit():
+    prompt = images.scene_prompt(
+        {"status": "not_accessible", "experience": "Enjoying coffee inside"},
+        {"name": "Cafe"},
+    )
+    assert "Keep her outside" in prompt
+    assert "Do not turn this into a successful visit" in prompt
+    assert "She is enjoying the activity" not in prompt
+
+
 def test_empty_parts_are_not_a_type_error():
     response = types.GenerateContentResponse(
         candidates=[types.Candidate(content=types.Content(parts=None))]
