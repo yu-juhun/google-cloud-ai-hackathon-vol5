@@ -35,7 +35,10 @@ export function travelersFor(result, count, avatars = []) {
     const place = first && places.get(first.place_id)
     const done = twin?.status === 'completed'
     const failed = twin?.status === 'failed'
-    const note = first?.experience || (failed ? 'この担当の分析結果を取得できませんでした。' : 'あなたの希望と条件をもとに、旅先を調べています。')
+    const notAccessible = first?.status === 'not_accessible'
+    const note = notAccessible
+      ? `ここは見送って、もっと楽しめる場所へ。${first.fit_reason || first.experience}`
+      : first?.experience || (failed ? 'この担当の分析結果を取得できませんでした。' : 'あなたの希望と条件をもとに、旅先を調べています。')
     const generatedImage = twin?.experience_image?.place_id === first?.place_id ? twin?.experience_image?.url : null
     return {
       id: twin?.id || i, name: `わたし ${i + 1}`, ordinal: i + 1,
@@ -43,10 +46,11 @@ export function travelersFor(result, count, avatars = []) {
       place: place?.name || (result ? '候補地点' : '候補を探しています'),
       status: done ? 'done' : failed ? 'failed' : 'exploring',
       x: positions[i][0], y: positions[i][1], avatar: avatarFor(i, avatars[i]),
-      note, thought: note, tag: failed ? '結果なし' : first?.status === 'not_accessible' ? '条件に合わない' : done ? 'レポート到着' : '調査中',
+      note, thought: note, tag: failed ? '結果なし' : notAccessible ? '別の候補へ' : done ? 'レポート到着' : '調査中',
       detail: {
         image: generatedImage || photos[i],
         imagePlaceId: generatedImage ? first.place_id : null,
+        imageSceneKind: twin?.experience_image?.scene_kind,
         result: note,
         facts: [['分析状況', done ? '完了' : failed ? '失敗' : '調査中'], ['候補', `${assessments.length}地点`], ['条件', first?.status === 'accessible' ? '候補として検討' : '要確認']],
         timeline: first ? [...first.facts, ...first.unknowns.map(s => `未確認：${s}`)] : [note],

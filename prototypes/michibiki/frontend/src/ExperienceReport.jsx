@@ -11,10 +11,11 @@ export default function ExperienceReport({ agent }) {
   const keyFacts = report.facts.filter(text => !/^(名称|住所|所在地)(は|：|:)/.test(text))
   const knownFacilities = facilities.filter(([, key]) => typeof options[key] === 'boolean')
   const cautions = featuredCautions(report)
+  const notAccessible = report.status === 'not_accessible'
   return <div className="readable-report">
     <p className="report-caption">{agent.name} の体験談 / {agent.place}</p>
-    {agent.detail.imagePlaceId && <p className="report-caption">体験イメージ · 調査内容から生成</p>}
-    <h3>{cleanReportText(report.experience.split(/(?<=。)/)[0])}</h3>
+    {agent.detail.imagePlaceId && <p className="report-caption">{agent.detail.imageSceneKind === 'exterior_check' ? '施設の外で確認する仮想イメージ' : '仮想体験イメージ · 調査内容から生成'}</p>}
+    <h3>{notAccessible ? 'ここは見送って、もっと楽しめる場所へ。' : cleanReportText(report.experience.split(/(?<=。)/)[0])}</h3>
     <p className="report-fit">{cleanReportText((report.fit_reason || report.experience).split(/(?<=。)/).slice(0, 2).join(''))}</p>
     {!!knownFacilities.length && <div className="facility-grid" aria-label="Google Mapsの車いす対応情報">{knownFacilities.map(([label, key]) => <span key={key} className={options[key] === true ? 'available' : ''}><small>{label}</small><b>{options[key] === true ? '対応情報あり' : '対応なしの情報'}</b></span>)}</div>}
     <div className="report-highlights">
