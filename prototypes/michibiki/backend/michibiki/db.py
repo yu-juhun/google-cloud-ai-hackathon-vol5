@@ -360,6 +360,21 @@ def update_video_job(job_id, status, provider_operation_name=None, object_name=N
         conn.execute(update(video_jobs).where(video_jobs.c.id == job_id).values(**values))
 
 
+def get_report(report_id):
+    with engine().connect() as conn:
+        record = conn.execute(select(reports).where(reports.c.id == report_id)).mappings().first()
+    return dict(record) if record else None
+
+
+def find_latest_ready_avatar_set(client_hash):
+    with engine().connect() as conn:
+        record = conn.execute(select(avatar_sets).where(
+            avatar_sets.c.client_hash == client_hash,
+            avatar_sets.c.status == "ready",
+        ).order_by(avatar_sets.c.created_at.desc()).limit(1)).mappings().first()
+    return dict(record) if record else None
+
+
 def find_active_video_job(client_hash, report_id):
     with engine().connect() as conn:
         record = conn.execute(select(video_jobs).where(

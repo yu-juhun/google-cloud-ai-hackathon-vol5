@@ -26,7 +26,9 @@ async def lifespan(app):
 app = FastAPI(title=f"michibiki-{ROLE}", lifespan=lifespan)
 if ROLE == "backend":
     from .media import router as media_router
+    from .video import router as video_router
     app.include_router(media_router)
+    app.include_router(video_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173").split(","),

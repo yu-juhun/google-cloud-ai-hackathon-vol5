@@ -13,6 +13,22 @@ def database(tmp_path, monkeypatch):
     engine.dispose()
 
 
+def test_get_report_returns_none_for_unknown_id(database):
+    assert db.get_report("does-not-exist") is None
+
+
+def test_find_latest_ready_avatar_set_returns_none_when_absent(database):
+    assert db.find_latest_ready_avatar_set("hash-1") is None
+
+
+def test_find_latest_ready_avatar_set_skips_non_ready(database):
+    record = db.create_avatar_set("hash-1", "task-1")
+    assert db.find_latest_ready_avatar_set("hash-1") is None
+    db.update_avatar_set(record["id"], "ready", assets={"assets": [{"object_name": "x.png"}]})
+    found = db.find_latest_ready_avatar_set("hash-1")
+    assert found["id"] == record["id"]
+
+
 def test_create_and_get_video_job(database):
     record = db.create_video_job("hash-1", "report-1", "もっと穏やかに", "cinematic", "calm")
     assert record["status"] == "queued"
