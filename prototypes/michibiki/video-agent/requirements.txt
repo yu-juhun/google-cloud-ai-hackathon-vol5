@@ -1,0 +1,5 @@
+fastapi==0.141.1
+uvicorn[standard]==0.30.6
+google-genai==2.23.0
+pydantic==2.13.5
+google-cloud-storage>=3,<4
