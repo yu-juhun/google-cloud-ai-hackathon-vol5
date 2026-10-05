@@ -40,3 +40,16 @@ def test_check_relevance_defaults_to_rejecting_on_malformed_response():
     on_topic, reason = check_relevance("入口は段差なし", "何か", fake_client)
 
     assert on_topic is False
+
+
+def test_check_relevance_fails_closed_on_string_on_topic():
+    """A truthy-but-wrong-typed on_topic (e.g. the string "false") must not
+    be coerced to True by Python truthiness; only an actual boolean True passes."""
+    fake_response = MagicMock()
+    fake_response.text = json.dumps({"on_topic": "false", "reason": ""})
+    fake_client = MagicMock()
+    fake_client.models.generate_content.return_value = fake_response
+
+    on_topic, _ = check_relevance("入口は段差なし", "何か", fake_client)
+
+    assert on_topic is False
