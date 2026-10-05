@@ -8,7 +8,7 @@ import logging
 import os
 
 import httpx
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
 from google.auth.transport.requests import Request
 from google.cloud import storage
 from google.genai import types
@@ -128,3 +128,72 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
         db.update_video_job, record["id"], "queued", provider_operation_name=result["operation_name"],
     )
     return {"id": record["id"], "status": "queued"}
+
+
+def _sign_video_url(object_name):
+    from datetime import timedelta
+    import google.auth
+    from google.auth.transport.requests import Request as GoogleAuthRequest
+
+    credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
+    credentials.refresh(GoogleAuthRequest())
+    bucket = storage.Client(credentials=credentials).bucket(os.environ["AVATAR_BUCKET"])
+    return bucket.blob(object_name).generate_signed_url(
+        version="v4", expiration=timedelta(hours=1), method="GET",
+        service_account_email=os.environ["AVATAR_SIGNER"], access_token=credentials.token,
+    )
+
+
+def _upload_video(object_name, video_bytes, mime_type):
+    bucket = storage.Client().bucket(os.environ["AVATAR_BUCKET"])
+    blob = bucket.blob(object_name)
+    blob.cache_control = "private, max-age=3600"
+    blob.upload_from_string(video_bytes, content_type=mime_type)
+
+
+@router.websocket("/video-jobs/{job_id}/progress")
+async def video_progress(websocket: WebSocket, job_id: str):
+    client_token = websocket.headers.get("x-michibiki-client", "")
+    try:
+        owner = client_hash(client_token)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    try:
+        while True:
+            record = await asyncio.to_thread(db.get_video_job, job_id, owner)
+            if not record:
+                await websocket.close(code=1008)
+                return
+            # A terminal status already persisted in the DB (reached on a prior
+            # iteration, or already terminal when the client connected) is sent
+            # immediately, combined with the extra payload the client needs.
+            if record["status"] == "ready":
+                video_url = await asyncio.to_thread(_sign_video_url, record["object_name"])
+                await websocket.send_json({"type": "status", "status": "ready", "video_url": video_url,
+                                           "expires_in": 3600})
+                return
+            if record["status"] == "failed":
+                await websocket.send_json({"type": "status", "status": "failed",
+                                           "message": "動画生成に失敗しました。もう一度お試しください。"})
+                return
+            await websocket.send_json({"type": "status", "status": record["status"]})
+            if record["status"] in ("queued", "generating", "rendering") and record.get("provider_operation_name"):
+                result = await video_rpc(f"/video-jobs/{record['provider_operation_name']}/status")
+                if result["status"] == "ready":
+                    object_name = f"videos/{job_id}"
+                    video_bytes = base64.b64decode(result["video_bytes_b64"])
+                    await asyncio.to_thread(_upload_video, object_name, video_bytes, result["mime_type"])
+                    await asyncio.to_thread(db.update_video_job, job_id, "ready", object_name=object_name)
+                    record["status"] = "ready"
+                    record["object_name"] = object_name
+                elif result["status"] == "failed":
+                    await asyncio.to_thread(db.update_video_job, job_id, "failed")
+                    record["status"] = "failed"
+                elif record["status"] == "queued":
+                    await asyncio.to_thread(db.update_video_job, job_id, "generating")
+                    record["status"] = "generating"
+            await asyncio.sleep(3)
+    except WebSocketDisconnect:
+        pass

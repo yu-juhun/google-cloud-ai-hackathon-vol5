@@ -123,3 +123,35 @@ def test_create_video_job_404s_when_no_ready_avatar_set(
     assert response.status_code == 404
     assert "アバター" in response.json()["detail"]
     mock_create.assert_not_called()
+
+
+@patch("michibiki.video._sign_video_url", return_value="https://signed.example/video.mp4")
+@patch("michibiki.video._upload_video")
+@patch("michibiki.video.video_rpc", new_callable=AsyncMock)
+@patch("michibiki.db.update_video_job")
+@patch("michibiki.db.get_video_job")
+def test_progress_ws_sends_ready_status_and_closes(mock_get_job, mock_update_job, mock_rpc, mock_upload, mock_sign):
+    mock_get_job.return_value = {"id": "job-1", "client_hash": "x", "status": "generating",
+                                 "provider_operation_name": "operations/abc123"}
+    mock_rpc.return_value = {"status": "ready", "video_bytes_b64": "Zm9v", "mime_type": "video/mp4"}
+
+    with patch("michibiki.video.client_hash", return_value="x"):
+        with client.websocket_connect(
+            "/api/video-jobs/job-1/progress", headers=HEADERS,
+        ) as websocket:
+            first = websocket.receive_json()
+            assert first["type"] == "status"
+            assert first["status"] == "generating"
+            second = websocket.receive_json()
+            assert second["type"] == "status"
+            assert second["status"] == "ready"
+            assert "video_url" in second
+
+
+@patch("michibiki.db.get_video_job", return_value=None)
+def test_progress_ws_closes_immediately_for_unknown_job(mock_get_job):
+    with client.websocket_connect("/api/video-jobs/does-not-exist/progress", headers=HEADERS) as websocket:
+        import pytest
+        from starlette.websockets import WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect):
+            websocket.receive_json()
