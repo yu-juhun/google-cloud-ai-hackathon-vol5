@@ -36,6 +36,7 @@ export function travelersFor(result, count, avatars = []) {
     const done = twin?.status === 'completed'
     const failed = twin?.status === 'failed'
     const note = first?.experience || (failed ? 'この担当の分析結果を取得できませんでした。' : 'あなたの希望と条件をもとに、旅先を調べています。')
+    const generatedImage = twin?.experience_image?.place_id === first?.place_id ? twin?.experience_image?.url : null
     return {
       id: twin?.id || i, name: `わたし ${i + 1}`, ordinal: i + 1,
       role: twin?.assignment?.role || '旅先を調査中',
@@ -44,7 +45,9 @@ export function travelersFor(result, count, avatars = []) {
       x: positions[i][0], y: positions[i][1], avatar: avatarFor(i, avatars[i]),
       note, thought: note, tag: failed ? '結果なし' : first?.status === 'not_accessible' ? '条件に合わない' : done ? 'レポート到着' : '調査中',
       detail: {
-        image: photos[i], result: note,
+        image: generatedImage || photos[i],
+        imagePlaceId: generatedImage ? first.place_id : null,
+        result: note,
         facts: [['分析状況', done ? '完了' : failed ? '失敗' : '調査中'], ['候補', `${assessments.length}地点`], ['条件', first?.status === 'accessible' ? '候補として検討' : '要確認']],
         timeline: first ? [...first.facts, ...first.unknowns.map(s => `未確認：${s}`)] : [note],
         reports: assessments.map(a => ({ ...a, place: places.get(a.place_id) })),
@@ -59,7 +62,10 @@ export function itineraryCards(result, travelers) {
   return result.itinerary.stops.map((stop, i) => {
     const traveler = travelers.find(t => t.detail.reports.some(a => a.place_id === stop.place_id)) || travelers[0]
     return { ...traveler, id: `stop-${i}`, place: places.get(stop.place_id)?.name || '候補地点', stop,
-      detail: { ...traveler.detail, result: stop.activity, facts: [['滞在目安', `${stop.duration_minutes}分`]] },
+      detail: { ...traveler.detail,
+        image: traveler.detail.imagePlaceId && traveler.detail.imagePlaceId !== stop.place_id ? photos[i % photos.length] : traveler.detail.image,
+        imagePlaceId: traveler.detail.imagePlaceId === stop.place_id ? stop.place_id : null,
+        result: stop.activity, facts: [['滞在目安', `${stop.duration_minutes}分`]] },
       tag: stop.rest_after ? 'このあと休憩' : '旅程の候補', mapsUrl: places.get(stop.place_id)?.maps_url,
     }
   })
