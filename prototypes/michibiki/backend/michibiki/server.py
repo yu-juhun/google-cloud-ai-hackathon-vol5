@@ -8,7 +8,7 @@ from copy import deepcopy
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import db
+from . import db, experience_images
 from .agents import pipeline, rpc, specialist
 from .contracts import MissionInput, Profile
 
@@ -26,6 +26,7 @@ async def lifespan(app):
 app = FastAPI(title=f"michibiki-{ROLE}", lifespan=lifespan)
 if ROLE == "backend":
     from .media import router as media_router
+
     app.include_router(media_router)
 app.add_middleware(
     CORSMiddleware,
@@ -85,6 +86,11 @@ async def create_mission(request: MissionInput):
     try:
         async with asyncio.timeout(240):
             result = await rpc("orchestrator", request.model_dump())
+            await experience_images.generate(
+                result,
+                mission["id"],
+                budget=min(90, max(1, 230 - (time.monotonic() - started))),
+            )
             result["timings"]["request_ms"] = round((time.monotonic() - started) * 1000)
             transient_places = result["places"]
             result["places"] = [{"place_id": p["place_id"]} for p in transient_places]
@@ -95,6 +101,7 @@ async def create_mission(request: MissionInput):
                 (time.monotonic() - started) * 1000
             )
             response["saved"] = False
+            await asyncio.to_thread(experience_images.attach_urls, response)
             logger.info(
                 "mission_completed id=%s elapsed_ms=%s",
                 mission["id"],
@@ -124,6 +131,7 @@ async def hydrate(result):
     if ids:
         hydrated = await rpc("orchestrator", {"op": "details", "place_ids": ids})
         output["places"] = hydrated["places"]
+    await asyncio.to_thread(experience_images.attach_urls, output)
     return output
 
 

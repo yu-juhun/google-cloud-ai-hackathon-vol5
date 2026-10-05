@@ -129,8 +129,8 @@ resource "google_cloud_run_v2_service" "specialist" {
     manual_instance_count = 0
   }
   template {
-    service_account                  = google_service_account.runtime[each.key].email
-    timeout                          = "180s"
+    service_account = google_service_account.runtime[each.key].email
+    timeout         = "180s"
     # A single mission can dispatch all ten logical twins concurrently.
     max_instance_request_concurrency = 10
     scaling {
@@ -272,6 +272,10 @@ resource "google_cloud_run_v2_service" "backend" {
           DB_USER                  = google_sql_user.app.name
           DB_NAME                  = google_sql_database.app.name
           AVATAR_BUCKET            = google_storage_bucket.avatars.name
+          GOOGLE_CLOUD_PROJECT     = var.project_id
+          EXPERIENCE_BUCKET        = google_storage_bucket.experiences.name
+          EXPERIENCE_REFERENCE_URL = "${var.frontend_origin}/images/cafe-spring-day-trip.png"
+          EXPERIENCE_IMAGE_MODEL   = "gemini-3.1-flash-image"
           AVATAR_SIGNER            = google_service_account.runtime["backend"].email
           PERSONA_URL              = var.persona_image == "" ? "" : google_cloud_run_v2_service.persona[0].uri
         }
