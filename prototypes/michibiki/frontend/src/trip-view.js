@@ -10,7 +10,7 @@ const photos = [
 const positions = [[18,32],[35,63],[55,28],[72,48],[44,82],[82,75],[63,67],[27,45],[19,74],[87,24]]
 
 export function mapFor(result, width = 1200, height = 760) {
-  const used = new Set((result?.twins || []).flatMap(t => t.assessments.map(a => a.place_id)))
+  const used = new Set((result?.twins || []).map(t => t.assessments[0]?.place_id).filter(Boolean))
   const project = location => {
     const lat = Math.max(-85, Math.min(85, location.latitude)) * Math.PI / 180
     return { x: (location.longitude + 180) / 360, y: (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 }
@@ -19,7 +19,7 @@ export function mapFor(result, width = 1200, height = 760) {
   if (!points.length) return null
   const xs = points.map(p => p.x), ys = points.map(p => p.y)
   const cx = (Math.min(...xs) + Math.max(...xs)) / 2, cy = (Math.min(...ys) + Math.max(...ys)) / 2
-  const zoom = Math.max(2, Math.min(16, Math.floor(Math.log2(Math.min(width * .55 / (256 * Math.max(...xs) - 256 * Math.min(...xs) || 1), height * .55 / (256 * Math.max(...ys) - 256 * Math.min(...ys) || 1))))))
+  const zoom = Math.max(2, Math.min(17, Math.floor(Math.log2(Math.min(width * .65 / (256 * Math.max(...xs) - 256 * Math.min(...xs) || 1), height * .6 / (256 * Math.max(...ys) - 256 * Math.min(...ys) || 1))))))
   const scale = 256 * 2 ** zoom
   const latitude = Math.atan(Math.sinh(Math.PI * (1 - 2 * cy))) * 180 / Math.PI
   return { query: `${latitude},${cx * 360 - 180}`, zoom, positions: new Map(points.map(p => [p.id, { x: 50 + (p.x - cx) * scale / width * 100, y: 50 + (p.y - cy) * scale / height * 100 }])) }
