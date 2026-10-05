@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import random
 import time
 from datetime import timedelta
 
@@ -15,18 +16,36 @@ from google.genai import errors, types
 
 logger = logging.getLogger("michibiki")
 VERSION = "experience-demo-v1"
+# Shared by requests in this process, not multiplied by each incoming mission.
+IMAGE_SLOTS = asyncio.Semaphore(2)
 
 
-async def image_call(client, **kwargs):
-    """Retry a transient provider failure once, within the caller's deadline."""
-    for attempt in range(2):
+async def image_call(client, *, metadata, mission_id, ordinal, **kwargs):
+    """Bounded exponential backoff; the mission deadline also covers waiting."""
+    primary_model = kwargs["model"]
+    fallback_model = os.environ.get("EXPERIENCE_IMAGE_FALLBACK_MODEL")
+    for attempt in range(4):
+        metadata["attempts"] = attempt + 1
+        model = fallback_model if fallback_model and attempt >= 2 else primary_model
+        metadata["model"] = model
+        kwargs["model"] = model
         try:
             return await client.aio.models.generate_content(**kwargs)
         except errors.APIError as exc:
-            if attempt or exc.code not in (429, 500, 502, 503, 504):
+            metadata["error_code"] = exc.code
+            metadata["provider_status"] = exc.status
+            metadata["reason"] = "rate_limited" if exc.code == 429 else "provider_error"
+            if attempt == 3 or exc.code not in (429, 500, 502, 503, 504):
                 raise
-            logger.warning("experience_image_retry code=%s", exc.code)
-            await asyncio.sleep(2)
+            # Do not spend the whole HTTP budget retrying an exhausted model.
+            switching = fallback_model and attempt == 1
+            exponent = attempt % 2 if fallback_model else attempt
+            delay = 0 if switching else 5 * 2**exponent + random.uniform(0, 2)
+            logger.warning(
+                "experience_image_retry mission_id=%s ordinal=%s attempt=%s code=%s provider_status=%s model=%s fallback=%s delay_seconds=%.1f",
+                mission_id, ordinal, attempt + 1, exc.code, exc.status, model, bool(switching), delay,
+            )
+            await asyncio.sleep(delay)
 
 
 def scene_prompt(assessment, place):
@@ -45,7 +64,7 @@ def scene_prompt(assessment, place):
     )
 
 
-async def generate(result, mission_id, budget=90):
+async def generate(result, mission_id, budget=120):
     bucket_name = os.environ.get("EXPERIENCE_BUCKET")
     reference_url = os.environ.get("EXPERIENCE_REFERENCE_URL")
     if not bucket_name or not reference_url:
@@ -65,9 +84,12 @@ async def generate(result, mission_id, budget=90):
                 vertexai=True,
                 project=os.environ["GOOGLE_CLOUD_PROJECT"],
                 location="global",
+                # Own retries above: do not multiply them with SDK retries.
+                http_options=types.HttpOptions(
+                    retry_options=types.HttpRetryOptions(attempts=1),
+                ),
             )
             bucket = storage.Client().bucket(bucket_name)
-            semaphore = asyncio.Semaphore(3)
 
             async def one(twin):
                 assessments = twin.get("assessments", [])
@@ -75,18 +97,22 @@ async def generate(result, mission_id, budget=90):
                     return
                 assessment = assessments[0]
                 metadata = {
-                    "status": "skipped",
+                    "status": "queued",
                     "place_id": assessment["place_id"],
                     "prompt_version": VERSION,
                 }
                 twin["experience_image"] = metadata
                 if assessment.get("status") == "not_accessible":
+                    metadata.update(status="skipped", reason="not_accessible")
                     return
                 try:
-                    async with semaphore:
-                        metadata["status"] = "failed"
+                    async with IMAGE_SLOTS:
+                        metadata["status"] = "generating"
                         generated = await image_call(
                             client,
+                            metadata=metadata,
+                            mission_id=mission_id,
+                            ordinal=twin.get("ordinal"),
                             model=os.environ.get(
                                 "EXPERIENCE_IMAGE_MODEL", "gemini-3.1-flash-image"
                             ),
@@ -130,14 +156,22 @@ async def generate(result, mission_id, budget=90):
                         metadata.update(
                             status="ready",
                             object_name=object_name,
-                            model=os.environ.get(
-                                "EXPERIENCE_IMAGE_MODEL", "gemini-3.1-flash-image"
-                            ),
+                        )
+                        metadata.pop("reason", None)
+                        metadata.pop("error_code", None)
+                        metadata.pop("provider_status", None)
+                        logger.info(
+                            "experience_image_ready mission_id=%s ordinal=%s attempts=%s",
+                            mission_id, twin.get("ordinal"), metadata["attempts"],
                         )
                 except Exception as exc:
+                    metadata["status"] = "failed"
+                    metadata.setdefault("reason", "generation_or_storage_error")
                     logger.warning(
-                        "experience_image_failed ordinal=%s error_type=%s code=%s",
+                        "experience_image_failed mission_id=%s ordinal=%s attempts=%s error_type=%s code=%s",
+                        mission_id,
                         twin.get("ordinal"),
+                        metadata.get("attempts", 0),
                         type(exc).__name__,
                         getattr(exc, "code", None),
                     )
@@ -146,6 +180,10 @@ async def generate(result, mission_id, budget=90):
     except Exception as exc:
         logger.warning("experience_images_incomplete error_type=%s", type(exc).__name__)
     finally:
+        for twin in result.get("twins", []):
+            item = twin.get("experience_image", {})
+            if item.get("status") in ("queued", "generating"):
+                item.update(status="failed", reason="time_budget_exceeded")
         if client:
             await client.aio.aclose()
             client.close()
@@ -158,6 +196,13 @@ async def generate(result, mission_id, budget=90):
         )
         result["image_mode"] = "generated_demo" if ready else "static_demo"
         result["generated_image_count"] = ready
+        logger.info(
+            "experience_images_finished mission_id=%s ready=%s failed=%s skipped=%s elapsed_ms=%s",
+            mission_id, ready,
+            sum(t.get("experience_image", {}).get("status") == "failed" for t in result.get("twins", [])),
+            sum(t.get("experience_image", {}).get("status") == "skipped" for t in result.get("twins", [])),
+            result["timings"]["images_ms"],
+        )
 
 
 def attach_urls(result):

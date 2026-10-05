@@ -89,7 +89,7 @@ async def create_mission(request: MissionInput):
             await experience_images.generate(
                 result,
                 mission["id"],
-                budget=min(90, max(1, 230 - (time.monotonic() - started))),
+                budget=min(120, max(1, 230 - (time.monotonic() - started))),
             )
             result["timings"]["request_ms"] = round((time.monotonic() - started) * 1000)
             transient_places = result["places"]
