@@ -153,7 +153,7 @@ def _upload_video(object_name, video_bytes, mime_type):
 
 @router.websocket("/video-jobs/{job_id}/progress")
 async def video_progress(websocket: WebSocket, job_id: str):
-    client_token = websocket.headers.get("x-michibiki-client", "")
+    client_token = websocket.query_params.get("client") or websocket.headers.get("x-michibiki-client", "")
     try:
         owner = client_hash(client_token)
     except HTTPException:

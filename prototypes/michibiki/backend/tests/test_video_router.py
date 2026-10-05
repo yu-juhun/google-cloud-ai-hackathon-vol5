@@ -155,3 +155,15 @@ def test_progress_ws_closes_immediately_for_unknown_job(mock_get_job):
         from starlette.websockets import WebSocketDisconnect
         with pytest.raises(WebSocketDisconnect):
             websocket.receive_json()
+
+
+@patch("michibiki.db.get_video_job", return_value=None)
+def test_progress_ws_accepts_client_token_as_query_param(mock_get_job):
+    # Browsers can't set custom WS headers, so the client sends the token via
+    # ?client=... instead; the handler must accept it without a header present.
+    with client.websocket_connect("/api/video-jobs/job-1/progress?client=" + "a" * 40) as websocket:
+        import pytest
+        from starlette.websockets import WebSocketDisconnect
+        with pytest.raises(WebSocketDisconnect):
+            websocket.receive_json()  # closes immediately since get_video_job returns None,
+            # but must not reject for a missing header
