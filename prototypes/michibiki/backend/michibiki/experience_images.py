@@ -11,10 +11,22 @@ import httpx
 from google import genai
 from google.auth.transport.requests import Request
 from google.cloud import storage
-from google.genai import types
+from google.genai import errors, types
 
 logger = logging.getLogger("michibiki")
 VERSION = "experience-demo-v1"
+
+
+async def image_call(client, **kwargs):
+    """Retry a transient provider failure once, within the caller's deadline."""
+    for attempt in range(2):
+        try:
+            return await client.aio.models.generate_content(**kwargs)
+        except errors.APIError as exc:
+            if attempt or exc.code not in (429, 500, 502, 503, 504):
+                raise
+            logger.warning("experience_image_retry code=%s", exc.code)
+            await asyncio.sleep(2)
 
 
 def scene_prompt(assessment, place):
@@ -73,7 +85,8 @@ async def generate(result, mission_id, budget=90):
                 try:
                     async with semaphore:
                         metadata["status"] = "failed"
-                        generated = await client.aio.models.generate_content(
+                        generated = await image_call(
+                            client,
                             model=os.environ.get(
                                 "EXPERIENCE_IMAGE_MODEL", "gemini-3.1-flash-image"
                             ),
@@ -123,9 +136,10 @@ async def generate(result, mission_id, budget=90):
                         )
                 except Exception as exc:
                     logger.warning(
-                        "experience_image_failed ordinal=%s error_type=%s",
+                        "experience_image_failed ordinal=%s error_type=%s code=%s",
                         twin.get("ordinal"),
                         type(exc).__name__,
+                        getattr(exc, "code", None),
                     )
 
             await asyncio.gather(*(one(t) for t in result.get("twins", [])))
