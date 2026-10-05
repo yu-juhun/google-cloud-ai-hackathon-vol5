@@ -130,7 +130,7 @@ resource "google_cloud_run_v2_service" "specialist" {
   }
   template {
     service_account = google_service_account.runtime[each.key].email
-    timeout         = "180s"
+    timeout         = "600s"
     # A single mission can dispatch all ten logical twins concurrently.
     max_instance_request_concurrency = 10
     scaling {
@@ -188,7 +188,7 @@ resource "google_cloud_run_v2_service" "orchestrator" {
   }
   template {
     service_account                  = google_service_account.runtime["orchestrator"].email
-    timeout                          = "300s"
+    timeout                          = "900s"
     max_instance_request_concurrency = 2
     scaling {
       min_instance_count = 0
@@ -250,7 +250,7 @@ resource "google_cloud_run_v2_service" "backend" {
   }
   template {
     service_account                  = google_service_account.runtime["backend"].email
-    timeout                          = "300s"
+    timeout                          = "900s"
     max_instance_request_concurrency = 2
     scaling {
       min_instance_count = 0
