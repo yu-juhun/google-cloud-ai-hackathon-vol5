@@ -115,6 +115,6 @@ def collect(request):
 async def avatar_result(request: AvatarResult):
     try:
         return await asyncio.to_thread(collect, request)
-    except Exception:
-        logger.warning("Avatar batch collection failed", exc_info=False)
+    except Exception as exc:
+        logger.warning("Avatar batch collection failed error_type=%s", type(exc).__name__, exc_info=False)
         raise HTTPException(502, "生成画像を取得・保存できませんでした。再確認してください。")

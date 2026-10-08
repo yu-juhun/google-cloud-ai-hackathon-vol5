@@ -83,7 +83,7 @@ def test_generate_base_avatar_raises_on_task_error_status(mock_post, mock_reques
     error_poll_resp.json.return_value = {"data": {"task_status": "error", "error_message": "no face detected"}}
     mock_get.return_value = error_poll_resp
 
-    with pytest.raises(RuntimeError, match="task-abc"):
+    with pytest.raises(RuntimeError, match="generation failed"):
         generate_base_avatar(photo_bytes=b"fake-photo-bytes", content_type="image/png")
 
 
@@ -101,7 +101,7 @@ def test_generate_base_avatar_raises_on_poll_timeout(mock_post, mock_request, mo
     pending_poll_resp.json.return_value = {"data": {"task_status": "processing"}}
     mock_get.return_value = pending_poll_resp
 
-    with pytest.raises(RuntimeError, match="did not finish"):
+    with pytest.raises(RuntimeError, match="generation timed out"):
         generate_base_avatar(photo_bytes=b"fake-photo-bytes", content_type="image/png")
 
     assert mock_get.call_count == youcam_client.MAX_POLL_ATTEMPTS
