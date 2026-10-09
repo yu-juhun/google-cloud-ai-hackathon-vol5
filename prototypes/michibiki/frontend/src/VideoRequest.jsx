@@ -61,7 +61,7 @@ export default function VideoRequest({ reportId, place, reportText, profile }) {
         <button type="button" aria-pressed={inputMethod === 'text'} onClick={() => setInputMethod('text')}>文字で伝える</button>
         <button type="button" aria-pressed={inputMethod === 'voice'} onClick={() => setInputMethod('voice')}>声で相談する</button>
       </div>
-      {inputMethod === 'voice' && <VoiceConsultation trip={{ destination: place, wish: reportText }} profile={profile} onUse={useConsultation} />}
+      {inputMethod === 'voice' && <VoiceConsultation trip={{ destination: place, wish: reportText }} profile={profile} onUse={useConsultation} purpose="video_feedback" />}
       <label>フィードバック<textarea maxLength={500} value={feedback} onChange={e => setFeedback(e.target.value)} disabled={submitting} />
         <small>{feedback.length}/500</small></label>
       <label>動画スタイル<select value={style} onChange={e => setStyle(e.target.value)} disabled={submitting}>

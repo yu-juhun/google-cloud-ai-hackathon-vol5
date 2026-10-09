@@ -88,11 +88,13 @@ async def converse(websocket: WebSocket) -> None:
     # connect-time query param rather than a WebSocket message.
     requested_voice = websocket.query_params.get("voice")
     voice_name = requested_voice if requested_voice in VOICE_NAMES else None
+    requested_purpose = websocket.query_params.get("purpose")
+    purpose = requested_purpose if requested_purpose in ("trip_wish", "video_feedback") else "trip_wish"
     try:
         # A startup failure (bad Vertex credentials, an unavailable Live
         # API model, or an unsupported voice_name) must reach the client
         # as a message, not just a closed connection with no explanation.
-        await conversation.start(voice_name=voice_name)
+        await conversation.start(voice_name=voice_name, purpose=purpose)
     except Exception as e:
         await websocket.send_json({"type": "start_error", "message": str(e)})
         await websocket.close()
