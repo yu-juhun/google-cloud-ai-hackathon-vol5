@@ -151,14 +151,14 @@ def migrate(db=None):
                 avatar_sets.create(conn, checkfirst=True)
                 consultations.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=2))
-            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 3)).first():
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 4)).first():
                 video_jobs.create(conn, checkfirst=True)
-                conn.execute(insert(migrations).values(version=3))
+                conn.execute(insert(migrations).values(version=4))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
         conn.execute(insert(migrations).values(version=2))
-        conn.execute(insert(migrations).values(version=3))
+        conn.execute(insert(migrations).values(version=4))
 
 
 def save_profile(owner_id, conditions):
