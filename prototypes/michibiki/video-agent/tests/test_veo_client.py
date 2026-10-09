@@ -21,6 +21,7 @@ def test_start_video_task_returns_operation_name(mock_build_client):
     assert source.prompt == "a calm cafe scene"
     assert source.image.image_bytes == b"fake-image-bytes"
     assert source.image.mime_type == "image/png"
+    assert call_kwargs["config"].aspect_ratio == "16:9"
 
 
 @patch("veo_client._build_client")
