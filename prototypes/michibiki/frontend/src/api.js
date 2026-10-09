@@ -10,7 +10,7 @@ export function clientToken() {
 export async function api(path, { method = 'GET', body } = {}) {
   if (!origin) throw new Error('実APIの接続先が未設定です。モック結果には切り替えません。')
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 255000)
+  const timer = setTimeout(() => controller.abort(), 870000)
   try {
     const response = await fetch(origin + path, {
       method, signal: controller.signal,

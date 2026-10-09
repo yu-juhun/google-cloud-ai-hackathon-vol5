@@ -77,13 +77,16 @@ async def generate(model, instruction, payload, schema):
         vertexai=True,
         project=os.environ["GOOGLE_CLOUD_PROJECT"],
         location="global",
-        http_options=types.HttpOptions(timeout=75000),
+        # Application owns retries and deadlines; do not multiply SDK retries.
+        http_options=types.HttpOptions(
+            timeout=120000, retry_options=types.HttpRetryOptions(attempts=1)
+        ),
     )
     invalid_outputs = 0
     try:
         for attempt in range(5):
             try:
-                response = await client.aio.models.generate_content(
+                response = await asyncio.wait_for(client.aio.models.generate_content(
                     model=model,
                     contents=json.dumps(payload, ensure_ascii=False),
                     config=types.GenerateContentConfig(
@@ -97,7 +100,7 @@ async def generate(model, instruction, payload, schema):
                             if model == "gemini-2.5-flash" else None
                         ),
                     ),
-                )
+                ), timeout=120)
                 finish = response.candidates[0].finish_reason if response.candidates else None
                 usage = response.usage_metadata
                 logger.info(
@@ -117,11 +120,22 @@ async def generate(model, instruction, payload, schema):
                         # Never log the generated text or validation input values.
                         raise ValueError("Model did not return a valid structured result") from None
                     instruction += "\n前の回答は形式検証に失敗した。説明やコードフェンスなしで、簡潔な完全なJSONだけを返す。"
-            except APIError as exc:
-                if exc.code not in (429, 503) or attempt >= 3:
+            except (APIError, TimeoutError, httpx.TransportError) as exc:
+                code = getattr(exc, "code", None)
+                if isinstance(exc, APIError) and code not in (429, 500, 502, 503, 504):
                     raise
+                # Planning must leave time for research, assessment and images.
+                if attempt >= (1 if schema is Plan else 3):
+                    raise
+                previous_model = model
+                if model != "gemini-2.5-flash":
+                    model = "gemini-2.5-flash"
                 delay = min(12, 2 ** (attempt + 1)) + random.uniform(0, 1)
-                logger.warning("model_retry status=%s attempt=%s", exc.code, attempt + 1)
+                logger.warning(
+                    "model_retry schema=%s status=%s error_type=%s attempt=%s from_model=%s to_model=%s",
+                    schema.__name__, code, type(exc).__name__, attempt + 1,
+                    previous_model, model,
+                )
                 await asyncio.sleep(delay)
         raise ValueError("Model generation exhausted its bounded attempts")
     finally:
@@ -141,7 +155,7 @@ async def rpc(role, payload, path="/execute"):
     from google.oauth2.id_token import fetch_id_token
 
     token = await asyncio.to_thread(fetch_id_token, Request(), url)
-    async with httpx.AsyncClient(timeout=220) as client:
+    async with httpx.AsyncClient(timeout=810) as client:
         response = await client.post(
             url + path, json=payload, headers={"Authorization": f"Bearer {token}"}
         )

@@ -137,7 +137,7 @@ resource "google_cloud_run_v2_service" "specialist" {
   }
   template {
     service_account = google_service_account.runtime[each.key].email
-    timeout         = "180s"
+    timeout         = "600s"
     # A single mission can dispatch all ten logical twins concurrently.
     max_instance_request_concurrency = 10
     scaling {
@@ -195,7 +195,7 @@ resource "google_cloud_run_v2_service" "orchestrator" {
   }
   template {
     service_account                  = google_service_account.runtime["orchestrator"].email
-    timeout                          = "300s"
+    timeout                          = "900s"
     max_instance_request_concurrency = 2
     scaling {
       min_instance_count = 0
@@ -257,7 +257,7 @@ resource "google_cloud_run_v2_service" "backend" {
   }
   template {
     service_account                  = google_service_account.runtime["backend"].email
-    timeout                          = "300s"
+    timeout                          = "900s"
     max_instance_request_concurrency = 2
     scaling {
       min_instance_count = 0
@@ -272,17 +272,21 @@ resource "google_cloud_run_v2_service" "backend" {
       }
       dynamic "env" {
         for_each = {
-          SERVICE_ROLE             = "backend"
-          GOOGLE_CLOUD_PROJECT     = var.project_id
-          ORCHESTRATOR_URL         = google_cloud_run_v2_service.orchestrator.uri
-          FRONTEND_ORIGIN          = "${var.frontend_origin},http://localhost:5173,http://127.0.0.1:5173"
-          INSTANCE_CONNECTION_NAME = google_sql_database_instance.app.connection_name
-          DB_USER                  = google_sql_user.app.name
-          DB_NAME                  = google_sql_database.app.name
-          AVATAR_BUCKET            = google_storage_bucket.avatars.name
-          AVATAR_SIGNER            = google_service_account.runtime["backend"].email
-          PERSONA_URL              = var.persona_image == "" ? "" : google_cloud_run_v2_service.persona[0].uri
-          VIDEO_URL                = var.video_image == "" ? "" : google_cloud_run_v2_service.video[0].uri
+          SERVICE_ROLE                    = "backend"
+          GOOGLE_CLOUD_PROJECT            = var.project_id
+          ORCHESTRATOR_URL                = google_cloud_run_v2_service.orchestrator.uri
+          FRONTEND_ORIGIN                 = "${var.frontend_origin},http://localhost:5173,http://127.0.0.1:5173"
+          INSTANCE_CONNECTION_NAME        = google_sql_database_instance.app.connection_name
+          DB_USER                         = google_sql_user.app.name
+          DB_NAME                         = google_sql_database.app.name
+          AVATAR_BUCKET                   = google_storage_bucket.avatars.name
+          EXPERIENCE_BUCKET               = google_storage_bucket.experiences.name
+          EXPERIENCE_REFERENCE_URL        = "${var.frontend_origin}/images/cafe-spring-day-trip.png"
+          EXPERIENCE_IMAGE_MODEL          = "gemini-3.1-flash-image"
+          EXPERIENCE_IMAGE_FALLBACK_MODEL = "gemini-2.5-flash-image"
+          AVATAR_SIGNER                   = google_service_account.runtime["backend"].email
+          PERSONA_URL                     = var.persona_image == "" ? "" : google_cloud_run_v2_service.persona[0].uri
+          VIDEO_URL                       = var.video_image == "" ? "" : google_cloud_run_v2_service.video[0].uri
         }
         content {
           name  = env.key

@@ -1,5 +1,5 @@
 import os
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from uuid import uuid4
 
@@ -80,7 +80,8 @@ itineraries = Table(
     UniqueConstraint("mission_id", "version"),
 )
 avatar_sets = Table(
-    "avatar_sets", metadata,
+    "avatar_sets",
+    metadata,
     Column("id", String(36), primary_key=True),
     Column("client_hash", String(64), nullable=False),
     Column("provider_task_id", String, nullable=False),
@@ -89,11 +90,20 @@ avatar_sets = Table(
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 consultations = Table(
-    "persona_consultations", metadata,
+    "persona_consultations",
+    metadata,
     Column("id", String(36), primary_key=True),
     Column("client_hash", String(64), nullable=False),
     Column("body", json_type, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
+)
+image_rate_windows = Table(
+    "image_rate_windows",
+    metadata,
+    Column("model", String, primary_key=True),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("last_at", DateTime(timezone=True)),
+    Column("requests", Integer, nullable=False),
 )
 video_jobs = Table(
     "video_jobs", metadata,
@@ -147,10 +157,17 @@ def migrate(db=None):
         if conn.execute(
             select(migrations.c.version).where(migrations.c.version == 1)
         ).first():
-            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 2)).first():
+            if not conn.execute(
+                select(migrations.c.version).where(migrations.c.version == 2)
+            ).first():
                 avatar_sets.create(conn, checkfirst=True)
                 consultations.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=2))
+            if not conn.execute(
+                select(migrations.c.version).where(migrations.c.version == 3)
+            ).first():
+                image_rate_windows.create(conn, checkfirst=True)
+                conn.execute(insert(migrations).values(version=3))
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 4)).first():
                 video_jobs.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=4))
@@ -158,7 +175,71 @@ def migrate(db=None):
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
         conn.execute(insert(migrations).values(version=2))
+        conn.execute(insert(migrations).values(version=3))
         conn.execute(insert(migrations).values(version=4))
+
+
+def reserve_image_request(models):
+    """Two requests / 61-second window per model, shared across Cloud Run instances.
+
+    Never hold a database connection while waiting for the next window.
+    """
+    with engine().begin() as conn:
+        if conn.dialect.name == "postgresql":
+            from sqlalchemy import text
+
+            conn.execute(text("SELECT pg_advisory_xact_lock(73184262)"))
+        timestamp = now()
+        waits = []
+        for model in dict.fromkeys(models):
+            row = (
+                conn.execute(
+                    select(image_rate_windows).where(
+                        image_rate_windows.c.model == model
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            recent = sorted(
+                t.replace(tzinfo=UTC)
+                for t in ([row["started_at"], row["last_at"]] if row else [])
+                if t and t.replace(tzinfo=UTC) > timestamp - timedelta(seconds=61)
+            )
+            if len(recent) >= 2:
+                waits.append(
+                    (recent[0] + timedelta(seconds=61) - timestamp).total_seconds()
+                )
+                continue
+            values = {
+                "started_at": recent[0] if recent else timestamp,
+                "last_at": timestamp if recent else None,
+                "requests": len(recent) + 1,
+            }
+            if row:
+                conn.execute(
+                    update(image_rate_windows)
+                    .where(image_rate_windows.c.model == model)
+                    .values(**values)
+                )
+            else:
+                conn.execute(insert(image_rate_windows).values(model=model, **values))
+            return model, 0
+        return None, max(0.1, min(waits))
+
+
+def defer_image_model(model):
+    """A 429 can include calls outside this app; cool down for a full window."""
+    with engine().begin() as conn:
+        if conn.dialect.name == "postgresql":
+            from sqlalchemy import text
+
+            conn.execute(text("SELECT pg_advisory_xact_lock(73184262)"))
+        conn.execute(
+            update(image_rate_windows)
+            .where(image_rate_windows.c.model == model)
+            .values(started_at=now(), last_at=now(), requests=2)
+        )
 
 
 def save_profile(owner_id, conditions):
@@ -349,8 +430,13 @@ def is_itinerary_saved(mission_id):
 
 
 def create_avatar_set(client_hash, provider_task_id):
-    record = dict(id=str(uuid4()), client_hash=client_hash, provider_task_id=provider_task_id,
-                  status="generating", created_at=now())
+    record = dict(
+        id=str(uuid4()),
+        client_hash=client_hash,
+        provider_task_id=provider_task_id,
+        status="generating",
+        created_at=now(),
+    )
     with engine().begin() as conn:
         conn.execute(insert(avatar_sets).values(**record))
     return record
@@ -358,16 +444,26 @@ def create_avatar_set(client_hash, provider_task_id):
 
 def get_avatar_set(set_id, client_hash):
     with engine().connect() as conn:
-        record = conn.execute(select(avatar_sets).where(
-            avatar_sets.c.id == set_id, avatar_sets.c.client_hash == client_hash,
-        )).mappings().first()
+        record = (
+            conn.execute(
+                select(avatar_sets).where(
+                    avatar_sets.c.id == set_id,
+                    avatar_sets.c.client_hash == client_hash,
+                )
+            )
+            .mappings()
+            .first()
+        )
     return dict(record) if record else None
 
 
 def update_avatar_set(set_id, status, assets=None):
     with engine().begin() as conn:
-        conn.execute(update(avatar_sets).where(avatar_sets.c.id == set_id)
-                     .values(status=status, assets=assets))
+        conn.execute(
+            update(avatar_sets)
+            .where(avatar_sets.c.id == set_id)
+            .values(status=status, assets=assets)
+        )
 
 
 def create_video_job(client_hash, report_id, feedback, style, tone):
@@ -439,8 +535,11 @@ def get_mission_profile(report_id):
 def save_consultation(client_hash, body):
     record_id = str(uuid4())
     with engine().begin() as conn:
-        conn.execute(insert(consultations).values(id=record_id, client_hash=client_hash,
-                                                 body=body, created_at=now()))
+        conn.execute(
+            insert(consultations).values(
+                id=record_id, client_hash=client_hash, body=body, created_at=now()
+            )
+        )
     return record_id
 
 

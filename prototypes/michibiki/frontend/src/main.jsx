@@ -10,6 +10,8 @@ import VoiceConsultation from './VoiceConsultation'
 import { api, serverProfile } from './api'
 import { travelersFor, itineraryCards, mapFor, restSummary } from './trip-view'
 import './style.css'
+import { spreadMapAgents } from './map-layout'
+import './map-layout.css'
 
 const rawAgents = [
   ['ひなた','入口・幅員','東京駅 丸の内南口','done',18,32,'最も狭い箇所でも92cm。70cm幅なら余裕を持って通れました。','通過 OK'],
@@ -219,9 +221,8 @@ function Explore({ trip, profile, travelers: agents, result, loading, error, sta
     return () => clearInterval(timer)
   }, [loading, started])
   const arrivalMode = false
-  const activeAgents = agents.map(agent => {
-    const point = mapView?.positions.get(agent.detail.reports[0]?.place_id)
-    const mappedAgent = point ? { ...agent, ...point } : agent
+  const activeAgents = spreadMapAgents(agents, mapView?.positions, mapSize.width, mapSize.height).map(mappedAgent => {
+    const agent = mappedAgent
     if (revealedIds.includes(agent.id)) return mappedAgent
     const status = error ? 'failed' : !result || replayOrder[revealedIds.length] === agent.id ? 'exploring' : 'moving'
     const thought = result ? '体験レポートをまとめています。もう少しで届きます。' : 'あなたの希望と条件をもとに、旅先を調べています。'
@@ -237,6 +238,7 @@ function Explore({ trip, profile, travelers: agents, result, loading, error, sta
     {error && <section className="live-error" role="alert"><h2>結果を取得できませんでした</h2><p>{error}</p><div className="live-actions"><button className="journey-button" onClick={onEdit}>条件を見直す →</button><button className="button-text" onClick={onRestore}>保存済み結果を確認</button></div></section>}
     <section className="app map-focus" id="explore"><aside className="traveler"><div className="person"><Portrait agent={selected} large /><div><p className="eyebrow">あなたの条件</p><h2>あなたの旅</h2></div></div><div className="requirements"><span>♿ 幅 <b>{profile.width}cm</b></span><span>⌁ 段差 <b>{profile.step}cmまで</b></span></div><div className="progress"><div><span>{loading ? '旅先を調査中' : '体験の収集'}</span><b>{loading ? `${agents.length} 人` : `${complete} / ${agents.length} 完了`}</b></div><i className={loading ? 'restored-pending' : ''}><em style={{ width: loading ? '35%' : `${complete / agents.length * 100}%` }} /></i></div>{loading && <p className="restored-timing">目安 1〜2分 / 経過 {elapsed}秒<br />混雑時は最大約4分。結果が届くまで、この画面でお待ちください。</p>}<div className="activity-feed" aria-live="polite"><b>{loading ? '相棒たちが調べています' : '届いたこと'}</b>{activity.map(agent => <span key={agent.id}><i>{agent.status === 'done' ? '✓' : '◌'}</i>{agent.name}：{loading ? '希望と条件をもとに調査中' : agent.detail.timeline[0]}</span>)}</div></aside>
 <section className="map" ref={mapRef} aria-label={`${trip.destination}の体験マップ`}><iframe title={`${trip.destination}のGoogleマップ`} src={`https://www.google.com/maps?q=${encodeURIComponent(mapView?.query || trip.destination)}${mapView ? `&ll=${mapView.query}&z=${mapView.zoom}` : ''}&output=embed`} /><div className="map-tint" /><span className="live map-live"><i />{loading ? '調査中' : 'レポート'}</span>{arrivalMode ? <div className="arrival-route" aria-live="polite"><p>あなたのいる場所</p><div><b>{profile.home}</b><i className="route-track"><span className="route-line" /><span className="route-guide one"><Portrait agent={agents[0]} /></span><span className="route-guide two"><Portrait agent={agents[2]} /></span><span className="route-guide three"><Portrait agent={agents[5]} /></span></i><b>東京・丸の内</b></div><strong>10人のガイドが、東京へ向かっています</strong><small>到着したガイドから、現地で体験を始めます。</small><span className="arrival-count"><i />福岡を出発　<span />東京へ到着中</span></div> : activeAgents.map(agent => <button key={agent.id} className={`agent ${agent.status} ${agent.id === selected.id ? 'selected' : ''}`} style={{ left: `${agent.x}%`, top: `${agent.y}%` }} onClick={() => setSelectedId(agent.id)} aria-label={`${agent.name}。${agent.place}で${agent.tag}`}><Portrait agent={agent} /><span className="agent-label"><b>{agent.name}</b><small>{agent.status === 'done' ? 'レポート到着' : agent.status === 'failed' ? '結果なし' : '調査中'}</small></span><span className="bubble"><b>{agent.note}</b><small>{agent.status === 'done' ? '公開情報からの仮想体験' : '結果が届くのを待っています'}</small></span></button>)}
+        <svg className="map-agent-links" aria-hidden="true">{activeAgents.filter(a => Number.isFinite(a.anchorX)).map(a => <g key={a.id}><line x1={`${a.anchorX}%`} y1={`${a.anchorY}%`} x2={`${a.x}%`} y2={`${a.y}%`} /><circle cx={`${a.anchorX}%`} cy={`${a.anchorY}%`} r="3" /></g>)}</svg>
         {finished && showComplete && <div className="complete-callout"><button className="dismiss-complete" onClick={() => setShowComplete(false)} aria-label="完了のお知らせを閉じる">×</button><span>{complete} / {agents.length} 完了</span><b>{result?.status === 'partial' ? '届いたレポートをまとめました。' : '全員のレポートがそろいました。'}</b><p>次は、あなたの一日を選びましょう。</p><button onClick={onResults}>体験をまとめて見る <i>→</i></button></div>}
         {finished && !showComplete && <button className="results-float" onClick={onResults}><span>{complete}人のレポートが届きました</span><b>一日のまとめを見る</b><i>→</i></button>}
         <div className="map-key"><span><i className="dot pink" />レポート到着</span><span><i className="dot blue" />調査中</span><span><i className="dot gray" />待機中</span></div><span className="restored-map-note">アイコンは担当の表示位置です。現在地ではありません。</span></section><Feedback agent={selected} onDetail={() => onDetail(selected)} /></section>

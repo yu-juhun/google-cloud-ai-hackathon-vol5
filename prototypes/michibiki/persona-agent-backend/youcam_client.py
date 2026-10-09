@@ -185,7 +185,12 @@ def avatar_task_status(task_id):
     )
     response.raise_for_status()
     data = response.json()["data"]
-    return data.get("task_status"), data.get("results", {}).get("output", [])
+    status = data.get("task_status")
+    # Pending tasks can return null results (or partial images). Do not try
+    # to unpack them until the provider declares the entire task successful.
+    if status != "success":
+        return status, []
+    return status, (data.get("results") or {}).get("output") or []
 
 
 def download_avatar(url):

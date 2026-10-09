@@ -8,7 +8,7 @@ from copy import deepcopy
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import db
+from . import db, experience_images
 from .agents import pipeline, rpc, specialist
 from .contracts import MissionInput, Profile
 
@@ -49,7 +49,7 @@ async def execute(payload: dict):
     if ROLE == "orchestrator":
         if payload.get("op") == "details":
             return await rpc("search", payload)
-        async with asyncio.timeout(220):
+        async with asyncio.timeout(800):
             return await pipeline(payload)
     return await specialist(ROLE, payload)
 
@@ -95,8 +95,13 @@ async def create_mission(request: MissionInput, x_michibiki_client: str = Header
             },
         )
     try:
-        async with asyncio.timeout(240):
+        async with asyncio.timeout(840):
             result = await rpc("orchestrator", request.model_dump())
+            await experience_images.generate(
+                result,
+                mission["id"],
+                budget=min(300, max(1, 835 - (time.monotonic() - started))),
+            )
             result["timings"]["request_ms"] = round((time.monotonic() - started) * 1000)
             transient_places = result["places"]
             result["places"] = [{"place_id": p["place_id"]} for p in transient_places]
@@ -107,6 +112,7 @@ async def create_mission(request: MissionInput, x_michibiki_client: str = Header
                 (time.monotonic() - started) * 1000
             )
             response["saved"] = False
+            await asyncio.to_thread(experience_images.attach_urls, response)
             logger.info(
                 "mission_completed id=%s elapsed_ms=%s",
                 mission["id"],
@@ -125,7 +131,7 @@ async def create_mission(request: MissionInput, x_michibiki_client: str = Header
             502,
             {
                 "mission_id": mission["id"],
-                "message": "分析に失敗しました。条件やAPI設定を確認してください。",
+                "message": "旅の分析を完了できませんでした。時間をおいて、もう一度お試しください。",
             },
         )
 
@@ -136,6 +142,7 @@ async def hydrate(result):
     if ids:
         hydrated = await rpc("orchestrator", {"op": "details", "place_ids": ids})
         output["places"] = hydrated["places"]
+    await asyncio.to_thread(experience_images.attach_urls, output)
     return output
 
 
