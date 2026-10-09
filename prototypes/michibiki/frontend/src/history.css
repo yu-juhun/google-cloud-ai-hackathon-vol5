@@ -1,0 +1,13 @@
+.history-page { max-width: 1240px; margin: auto; padding: 40px 32px; }
+.history-page h1 { margin: 0; color: #426a94; font-size: 38px; letter-spacing: -.06em; }
+.history-warning { color: #a04444; }
+.history-list { display: flex; flex-direction: column; gap: 10px; margin: 24px 0 0; padding: 0; list-style: none; }
+.history-list button {
+  display: flex; align-items: center; gap: 14px; width: 100%;
+  padding: 14px 18px; border: 1px solid #dee9f1; border-radius: 10px;
+  background: #fff; color: #50789b; font-size: 14px; text-align: left; cursor: pointer;
+}
+.history-destination { flex: 1; font-weight: 800; color: #426a94; }
+.history-date { color: #7c9cb6; }
+.history-status { padding: 4px 8px; border-radius: 6px; background: #eef6fb; font-size: 12px; font-weight: 700; }
+.history-status-failed, .history-status-timed_out { background: #fff0f0; color: #a04444; }

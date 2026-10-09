@@ -6,6 +6,7 @@ import { avatarTone } from './avatar-fallback'
 import TwinFleet from './TwinFleet'
 import AvatarSetup, { useAvatarSet } from './AvatarSetup'
 import VideoRequest from './VideoRequest'
+import History from './History'
 import VoiceConsultation from './VoiceConsultation'
 import { api, serverProfile } from './api'
 import { travelersFor, itineraryCards, mapFor, restSummary } from './trip-view'
@@ -95,11 +96,12 @@ function App() {
 
   return <main>
     <a className="skip-link" href="#content">本文へ移動</a>
-    <nav aria-label="メインナビゲーション"><button className="brand" onClick={() => go('home')} aria-label="michibiki のホームへ"><svg className="brand-mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="2" y="2" width="30" height="30" rx="10" fill="#e8f7ff"/><path d="M9 10.5c3.8-3.1 10.5-2.9 13.5.7 3 3.7.8 8.1-2.3 9.8-3.2 1.7-6.7.2-7.1 4.4" fill="none" stroke="#4d85b3" strokeWidth="3" strokeLinecap="round"/><circle cx="13" cy="25" r="3.5" fill="#ef8db3"/></svg><span className="brand-word">michibiki</span><span className="brand-dot">•</span></button><div className="nav-actions"><button className="nav-button nav-profile" onClick={() => go('profile')}>あなたの条件 <span>→</span></button><button className="nav-button" onClick={() => go('plan')}>旅をつくる <span>→</span></button><button className="avatar" onClick={() => go('profile')} aria-label="あなたのプロフィール"><img src={profile.avatar} alt="" /></button></div></nav>
+    <nav aria-label="メインナビゲーション"><button className="brand" onClick={() => go('home')} aria-label="michibiki のホームへ"><svg className="brand-mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="2" y="2" width="30" height="30" rx="10" fill="#e8f7ff"/><path d="M9 10.5c3.8-3.1 10.5-2.9 13.5.7 3 3.7.8 8.1-2.3 9.8-3.2 1.7-6.7.2-7.1 4.4" fill="none" stroke="#4d85b3" strokeWidth="3" strokeLinecap="round"/><circle cx="13" cy="25" r="3.5" fill="#ef8db3"/></svg><span className="brand-word">michibiki</span><span className="brand-dot">•</span></button><div className="nav-actions"><button className="nav-button nav-profile" onClick={() => go('profile')}>あなたの条件 <span>→</span></button><button className="nav-button nav-history" onClick={() => go('history')}>履歴 <span>→</span></button><button className="nav-button" onClick={() => go('plan')}>旅をつくる <span>→</span></button><button className="avatar" onClick={() => go('profile')} aria-label="あなたのプロフィール"><img src={profile.avatar} alt="" /></button></div></nav>
     <div className="page-shell" key={page}>
     {page === 'home' && <Landing onStart={() => go('plan')} />}
     {page === 'plan' && <Plan trip={trip} setTrip={setTrip} profile={profile} setProfile={setProfile} onDispatch={dispatch} onProfile={() => go('profile')} busy={loading} />}
     {page === 'profile' && <Profile profile={profile} setProfile={setProfile} mediaState={mediaState} onPlan={() => go('plan')} />}
+    {page === 'history' && <History onOpen={id => { localStorage.setItem('michibiki-last-mission', id); go('results'); restore() }} onPlan={() => go('plan')} />}
     {page === 'map' && !result && <LiveTrip page={page} trip={displayTrip} profile={displayProfile} avatars={profile.twinAvatars} result={null} loading={loading} error={error} started={started} onNewTrip={() => go('plan')} onRestore={restore} />}
     {page === 'map' && result && <Explore trip={displayTrip} profile={displayProfile} travelers={travelers} result={result} loading={loading} error={error} started={started} onRestore={restore} onDetail={setDetailAgent} onEdit={() => go('plan')} onResults={() => go('results')} />}
     {page === 'results' && result && <Results trip={displayTrip} profile={displayProfile} travelers={travelers} result={result} saved={tripSaved || result.saved} onSave={saveTrip} onExplore={() => go('map')} onNewTrip={extra => { if (typeof extra === 'string') setTrip({ ...displayTrip, wish: `${displayTrip.wish}\n${extra}`.slice(0, 1000) }); go('plan') }} />}
