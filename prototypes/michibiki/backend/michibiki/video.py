@@ -93,6 +93,15 @@ def _download_avatar_image(avatar_record):
     return bucket.blob(image_asset["object_name"]).download_as_bytes()
 
 
+def _download_experience_image(experience_image):
+    # experience_images.py never persists the real mime type (its metadata dict
+    # has status/place_id/prompt_version/scene_kind/object_name only) — default
+    # to image/png, matching how it always requests response_modalities=["IMAGE"]
+    # from Gemini and in practice receives PNG.
+    bucket = storage.Client().bucket(os.environ["EXPERIENCE_BUCKET"])
+    return bucket.blob(experience_image["object_name"]).download_as_bytes()
+
+
 @router.post("/videos")
 async def create_video_job(request: VideoRequest, x_michibiki_client: str = Header()):
     if not request.consent:
@@ -113,11 +122,17 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
         raise HTTPException(503, "フィードバックの確認中にエラーが発生しました。しばらくしてからお試しください。")
     if not on_topic:
         raise HTTPException(400, reason or "フィードバックが体験談と無関係と判定されました。")
-    avatar_record = await asyncio.to_thread(db.find_latest_ready_avatar_set, owner)
-    if not avatar_record:
-        raise HTTPException(404, "まずアバター画像の生成を完了してください。")
-    image_asset = avatar_record["assets"]["assets"][0]
-    image_bytes = await asyncio.to_thread(_download_avatar_image, avatar_record)
+    experience_image = report["body"].get("experience_image") or {}
+    if experience_image.get("status") == "ready":
+        image_bytes = await asyncio.to_thread(_download_experience_image, experience_image)
+        image_mime_type = "image/png"
+    else:
+        avatar_record = await asyncio.to_thread(db.find_latest_ready_avatar_set, owner)
+        if not avatar_record:
+            raise HTTPException(404, "まずアバター画像の生成を完了してください。")
+        image_asset = avatar_record["assets"]["assets"][0]
+        image_bytes = await asyncio.to_thread(_download_avatar_image, avatar_record)
+        image_mime_type = image_asset.get("mime_type", "image/png")
     mobility_profile = await asyncio.to_thread(db.get_mission_profile, request.report_id)
     mobility_notes = (
         f"車いす種別: {mobility_profile['chair']}、横幅: {mobility_profile['width']}cm、"
@@ -130,7 +145,7 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
     try:
         result = await video_rpc("/video-jobs", {
             "image_bytes_b64": base64.b64encode(image_bytes).decode("ascii"),
-            "image_mime_type": image_asset.get("mime_type", "image/png"),
+            "image_mime_type": image_mime_type,
             "report_text": report_text,
             "mobility_notes": mobility_notes,
             "feedback": request.feedback,

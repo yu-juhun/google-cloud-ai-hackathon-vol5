@@ -29,6 +29,15 @@ def _avatar_row(mime_type=None):
     }
 
 
+def _report_row_with_experience_image(status="ready"):
+    row = _report_row()
+    row["body"]["experience_image"] = {
+        "status": status, "object_name": "experiences/mission-1/twin-1.image",
+        "place_id": "place-1", "scene_kind": "experience",
+    }
+    return row
+
+
 @patch("michibiki.db.get_mission_profile", return_value=None)
 @patch("michibiki.video._download_avatar_image", return_value=b"fake-image-bytes")
 @patch("michibiki.video.video_rpc", new_callable=AsyncMock)
@@ -65,6 +74,88 @@ def test_create_video_job_success(
     assert body["tone"] == "calm"
     assert body["image_mime_type"] == "image/jpeg"  # uses the real avatar asset mime type
     mock_update.assert_called_once_with("job-1", "queued", provider_operation_name="operations/abc123")
+
+
+@patch("michibiki.db.get_mission_profile", return_value=None)
+@patch("michibiki.video._download_experience_image", return_value=b"fake-scene-bytes")
+@patch("michibiki.video.video_rpc", new_callable=AsyncMock)
+@patch("michibiki.video.check_relevance", return_value=(True, ""))
+@patch("michibiki.db.create_video_job")
+@patch("michibiki.db.find_active_video_job", return_value=None)
+@patch("michibiki.db.update_video_job")
+@patch("michibiki.db.get_report")
+def test_create_video_job_prefers_ready_experience_image_over_avatar(
+    mock_get_report, mock_update, mock_find_active, mock_create, mock_guard, mock_rpc, mock_download, mock_profile,
+):
+    mock_get_report.return_value = _report_row_with_experience_image(status="ready")
+    mock_create.return_value = {"id": "job-1", "status": "queued"}
+    mock_rpc.return_value = {"operation_name": "operations/abc123"}
+
+    with patch("michibiki.db.find_latest_ready_avatar_set") as mock_find_avatar:
+        response = client.post("/api/videos", json={
+            "report_id": "report-1", "feedback": "もっと明るく", "style": "cinematic",
+            "tone": "calm", "consent": True,
+        }, headers=HEADERS)
+
+    assert response.status_code == 200
+    mock_download.assert_called_once_with(mock_get_report.return_value["body"]["experience_image"])
+    mock_find_avatar.assert_not_called()
+    body = mock_rpc.await_args.args[1]
+    assert body["image_mime_type"] == "image/png"
+
+
+@patch("michibiki.db.get_mission_profile", return_value=None)
+@patch("michibiki.video._download_avatar_image", return_value=b"fake-avatar-bytes")
+@patch("michibiki.video.video_rpc", new_callable=AsyncMock)
+@patch("michibiki.video.check_relevance", return_value=(True, ""))
+@patch("michibiki.db.create_video_job")
+@patch("michibiki.db.find_latest_ready_avatar_set")
+@patch("michibiki.db.find_active_video_job", return_value=None)
+@patch("michibiki.db.update_video_job")
+@patch("michibiki.db.get_report")
+def test_create_video_job_falls_back_to_avatar_when_experience_image_not_ready(
+    mock_get_report, mock_update, mock_find_active, mock_find_avatar, mock_create, mock_guard, mock_rpc, mock_download, mock_profile,
+):
+    mock_get_report.return_value = _report_row_with_experience_image(status="generating")
+    mock_find_avatar.return_value = _avatar_row(mime_type="image/jpeg")
+    mock_create.return_value = {"id": "job-1", "status": "queued"}
+    mock_rpc.return_value = {"operation_name": "operations/abc123"}
+
+    response = client.post("/api/videos", json={
+        "report_id": "report-1", "feedback": "もっと明るく", "style": "cinematic",
+        "tone": "calm", "consent": True,
+    }, headers=HEADERS)
+
+    assert response.status_code == 200
+    mock_download.assert_called_once()
+    body = mock_rpc.await_args.args[1]
+    assert body["image_mime_type"] == "image/jpeg"
+
+
+@patch("michibiki.db.get_mission_profile", return_value=None)
+@patch("michibiki.video._download_avatar_image", return_value=b"fake-avatar-bytes")
+@patch("michibiki.video.video_rpc", new_callable=AsyncMock)
+@patch("michibiki.video.check_relevance", return_value=(True, ""))
+@patch("michibiki.db.create_video_job")
+@patch("michibiki.db.find_latest_ready_avatar_set")
+@patch("michibiki.db.find_active_video_job", return_value=None)
+@patch("michibiki.db.update_video_job")
+@patch("michibiki.db.get_report")
+def test_create_video_job_falls_back_to_avatar_when_experience_image_key_absent(
+    mock_get_report, mock_update, mock_find_active, mock_find_avatar, mock_create, mock_guard, mock_rpc, mock_download, mock_profile,
+):
+    mock_get_report.return_value = _report_row()  # no experience_image key at all
+    mock_find_avatar.return_value = _avatar_row(mime_type="image/png")
+    mock_create.return_value = {"id": "job-1", "status": "queued"}
+    mock_rpc.return_value = {"operation_name": "operations/abc123"}
+
+    response = client.post("/api/videos", json={
+        "report_id": "report-1", "feedback": "もっと明るく", "style": "cinematic",
+        "tone": "calm", "consent": True,
+    }, headers=HEADERS)
+
+    assert response.status_code == 200
+    mock_download.assert_called_once()
 
 
 @patch("michibiki.db.get_mission_profile")
