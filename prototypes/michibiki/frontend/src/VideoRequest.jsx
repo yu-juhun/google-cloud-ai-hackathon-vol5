@@ -20,6 +20,13 @@ export default function VideoRequest({ reportId, place, reportText, profile }) {
 
   const useConsultation = wish => { setFeedback(wish.slice(0, 500)); setInputMethod('text') }
 
+  useEffect(() => {
+    api(`/api/videos/by-report/${reportId}`).then(found => {
+      if (found.status === 'ready') { setVideoUrl(found.video_url); return }
+      if (found.job_id) { setJobId(found.job_id); setStatus(found.status) }
+    }).catch(() => {})
+  }, [reportId])
+
   const submit = async () => {
     if (!consent || submitting) return
     setSubmitting(true); setError('')

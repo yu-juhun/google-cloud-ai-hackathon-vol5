@@ -517,6 +517,15 @@ def find_active_video_job(client_hash, report_id):
     return dict(record) if record else None
 
 
+def find_latest_video_job(client_hash, report_id):
+    with engine().connect() as conn:
+        record = conn.execute(select(video_jobs).where(
+            video_jobs.c.client_hash == client_hash,
+            video_jobs.c.report_id == report_id,
+        ).order_by(video_jobs.c.created_at.desc()).limit(1)).mappings().first()
+    return dict(record) if record else None
+
+
 def get_mission_profile(report_id):
     with engine().connect() as conn:
         row = conn.execute(

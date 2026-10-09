@@ -388,3 +388,27 @@ def test_progress_ws_marks_job_failed_when_polling_raises(mock_get_job, mock_upd
             second = websocket.receive_json()
             assert second["status"] == "failed"
     mock_update_job.assert_called_once_with("job-1", "failed")
+
+
+@patch("michibiki.video._sign_video_url", return_value="https://signed.example/video.mp4")
+@patch("michibiki.db.find_latest_video_job")
+def test_get_video_by_report_returns_fresh_signed_url_when_ready(mock_find, mock_sign):
+    mock_find.return_value = {"id": "job-1", "status": "ready", "object_name": "videos/job-1"}
+    response = client.get("/api/videos/by-report/report-1", headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json() == {"status": "ready", "video_url": "https://signed.example/video.mp4", "job_id": "job-1"}
+    mock_sign.assert_called_once_with("videos/job-1")
+
+
+@patch("michibiki.db.find_latest_video_job")
+def test_get_video_by_report_returns_status_without_url_when_not_ready(mock_find):
+    mock_find.return_value = {"id": "job-1", "status": "generating", "object_name": None}
+    response = client.get("/api/videos/by-report/report-1", headers=HEADERS)
+    assert response.status_code == 200
+    assert response.json() == {"status": "generating", "video_url": None, "job_id": "job-1"}
+
+
+@patch("michibiki.db.find_latest_video_job", return_value=None)
+def test_get_video_by_report_404s_when_no_job_exists(mock_find):
+    response = client.get("/api/videos/by-report/report-1", headers=HEADERS)
+    assert response.status_code == 404

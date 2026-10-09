@@ -175,6 +175,16 @@ def _sign_video_url(object_name):
     )
 
 
+@router.get("/videos/by-report/{report_id}")
+async def get_video_by_report(report_id: str, x_michibiki_client: str = Header()):
+    owner = client_hash(x_michibiki_client)
+    job = await asyncio.to_thread(db.find_latest_video_job, owner, report_id)
+    if not job:
+        raise HTTPException(404, "この体験の動画はまだありません。")
+    video_url = await asyncio.to_thread(_sign_video_url, job["object_name"]) if job["status"] == "ready" else None
+    return {"status": job["status"], "video_url": video_url, "job_id": job["id"]}
+
+
 def _upload_video(object_name, video_bytes, mime_type):
     bucket = storage.Client().bucket(os.environ["AVATAR_BUCKET"])
     blob = bucket.blob(object_name)

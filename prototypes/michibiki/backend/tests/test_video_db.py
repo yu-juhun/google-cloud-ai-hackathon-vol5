@@ -67,6 +67,19 @@ def test_get_mission_profile_returns_none_when_report_unknown(database):
     assert db.get_mission_profile("does-not-exist") is None
 
 
+def test_find_latest_video_job_matches_regardless_of_status(database):
+    record = db.create_video_job("hash-1", "report-1", "fb", "cinematic", "calm")
+    db.update_video_job(record["id"], "ready", object_name="videos/xyz")
+    assert db.find_latest_video_job("hash-1", "report-1")["id"] == record["id"]
+    assert db.find_latest_video_job("hash-1", "report-1")["status"] == "ready"
+    assert db.find_latest_video_job("other-hash", "report-1") is None
+    assert db.find_latest_video_job("hash-1", "other-report") is None
+
+
+def test_find_latest_video_job_returns_none_when_absent(database):
+    assert db.find_latest_video_job("hash-1", "report-1") is None
+
+
 def test_get_mission_profile_returns_profile_for_linked_report(database):
     from uuid import uuid4
 
