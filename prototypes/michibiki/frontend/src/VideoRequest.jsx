@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { api, clientToken } from './api'
+import VoiceConsultation from './VoiceConsultation'
 import './video-request.css'
 
 const STYLES = [['cinematic', 'シネマティック'], ['long_take', 'ロングテイク'], ['narrated', 'ナレーション付き']]
 const TONES = [['calm', '穏やかな'], ['dramatic', 'ドラマチックな'], ['relaxed', '落ち着いた']]
 
-export default function VideoRequest({ reportId }) {
+export default function VideoRequest({ reportId, place, reportText, profile }) {
   const [feedback, setFeedback] = useState('')
+  const [inputMethod, setInputMethod] = useState('text')
   const [style, setStyle] = useState('cinematic')
   const [tone, setTone] = useState('calm')
   const [consent, setConsent] = useState(false)
@@ -15,6 +17,8 @@ export default function VideoRequest({ reportId }) {
   const [videoUrl, setVideoUrl] = useState(null)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  const useConsultation = wish => { setFeedback(wish.slice(0, 500)); setInputMethod('text') }
 
   const submit = async () => {
     if (!consent || submitting) return
@@ -46,6 +50,11 @@ export default function VideoRequest({ reportId }) {
 
   return <section className="video-request">
     {!jobId && <>
+      <div className="input-method" role="group" aria-label="フィードバックの入力方法">
+        <button type="button" aria-pressed={inputMethod === 'text'} onClick={() => setInputMethod('text')}>文字で伝える</button>
+        <button type="button" aria-pressed={inputMethod === 'voice'} onClick={() => setInputMethod('voice')}>声で相談する</button>
+      </div>
+      {inputMethod === 'voice' && <VoiceConsultation trip={{ destination: place, wish: reportText }} profile={profile} onUse={useConsultation} />}
       <label>フィードバック<textarea maxLength={500} value={feedback} onChange={e => setFeedback(e.target.value)} disabled={submitting} />
         <small>{feedback.length}/500</small></label>
       <label>動画スタイル<select value={style} onChange={e => setStyle(e.target.value)} disabled={submitting}>
