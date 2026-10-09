@@ -5,8 +5,7 @@ import './video-request.css'
 const STYLES = [['cinematic', 'シネマティック'], ['long_take', 'ロングテイク'], ['narrated', 'ナレーション付き']]
 const TONES = [['calm', '穏やかな'], ['dramatic', 'ドラマチックな'], ['relaxed', '落ち着いた']]
 
-export default function VideoRequest({ twins }) {
-  const [reportId, setReportId] = useState('')
+export default function VideoRequest({ reportId }) {
   const [feedback, setFeedback] = useState('')
   const [style, setStyle] = useState('cinematic')
   const [tone, setTone] = useState('calm')
@@ -17,10 +16,8 @@ export default function VideoRequest({ twins }) {
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
-  const completedTwins = twins.filter(twin => twin.status === 'completed')
-
   const submit = async () => {
-    if (!reportId || !consent || submitting) return
+    if (!consent || submitting) return
     setSubmitting(true); setError('')
     try {
       const job = await api('/api/videos', { method: 'POST', body: { report_id: reportId, feedback, style, tone, consent } })
@@ -49,12 +46,6 @@ export default function VideoRequest({ twins }) {
 
   return <section className="video-request">
     {!jobId && <>
-      <label>動画化する体験<select value={reportId} onChange={e => setReportId(e.target.value)} disabled={submitting}>
-        <option value="">選んでください</option>
-        {completedTwins.map(twin => <option key={twin.report_id} value={twin.report_id}>
-          {twin.places?.[0]?.name ? `${twin.places[0].name}：${twin.assignment.goal}` : twin.assignment.goal}
-        </option>)}
-      </select></label>
       <label>フィードバック<textarea maxLength={500} value={feedback} onChange={e => setFeedback(e.target.value)} disabled={submitting} />
         <small>{feedback.length}/500</small></label>
       <label>動画スタイル<select value={style} onChange={e => setStyle(e.target.value)} disabled={submitting}>
@@ -66,7 +57,7 @@ export default function VideoRequest({ twins }) {
       <label className="video-consent"><input type="checkbox" checked={consent} disabled={submitting}
         onChange={e => setConsent(e.target.checked)} />
         <span>あなたのアバター画像とこの体験談をもとに、Veoへ送信して動画を生成することに同意します。</span></label>
-      <button type="button" className="journey-button" disabled={!reportId || !consent || submitting} onClick={submit}>
+      <button type="button" className="journey-button" disabled={!consent || submitting} onClick={submit}>
         {submitting ? '依頼を送信中…' : '動画を作る →'}</button>
     </>}
     {jobId && !videoUrl && !error &&
