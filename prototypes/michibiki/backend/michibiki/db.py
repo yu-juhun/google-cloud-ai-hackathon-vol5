@@ -14,7 +14,6 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     create_engine,
-    delete,
     insert,
     select,
     update,
@@ -492,9 +491,14 @@ def update_video_job(job_id, status, provider_operation_name=None, object_name=N
         conn.execute(update(video_jobs).where(video_jobs.c.id == job_id).values(**values))
 
 
-def get_report(report_id):
+def get_report(report_id, owner_id=None):
     with engine().connect() as conn:
-        record = conn.execute(select(reports).where(reports.c.id == report_id)).mappings().first()
+        query = select(reports).where(reports.c.id == report_id)
+        if owner_id is not None:
+            query = query.join(twins, reports.c.twin_id == twins.c.id).join(
+                missions, twins.c.mission_id == missions.c.id
+            ).where(missions.c.owner_id == owner_id)
+        record = conn.execute(query).mappings().first()
     return dict(record) if record else None
 
 
@@ -552,6 +556,25 @@ def save_consultation(client_hash, body):
     return record_id
 
 
+def get_report_scene_context(report_id):
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(missions.c.input_snapshot, missions.c.result, reports.c.body)
+            .select_from(reports.join(twins, reports.c.twin_id == twins.c.id)
+                         .join(missions, twins.c.mission_id == missions.c.id))
+            .where(reports.c.id == report_id)
+        ).mappings().first()
+    if not row:
+        return {}
+    trip = row["input_snapshot"].get("trip", {})
+    assessment = (row["body"].get("assessments") or [{}])[0]
+    itinerary = (row["result"] or {}).get("itinerary", {})
+    stop = next((s for s in itinerary.get("stops", [])
+                 if s.get("place_id") == assessment.get("place_id")), {})
+    return {"destination": trip.get("destination", ""), "wish": trip.get("wish", ""),
+            "activity": stop.get("activity", ""), "trip_title": itinerary.get("title", "")}
+
+
 def migrate_demo_owner_data(target_client_hash):
     """One-time, manually-invoked data migration — never called from migrate() or
     any endpoint. Moves DEMO_OWNER's profile and missions to a real client_hash.
@@ -582,4 +605,4 @@ def migrate_demo_owner_data(target_client_hash):
             .where(missions.c.owner_id == DEMO_OWNER)
             .values(owner_id=target_client_hash)
         )
-        conn.execute(delete(profiles).where(profiles.c.owner_id == DEMO_OWNER))
+        # Keep the legacy profile as a recoverable record; never delete user data.
