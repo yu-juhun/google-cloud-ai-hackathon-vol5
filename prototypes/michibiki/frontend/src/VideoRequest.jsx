@@ -73,7 +73,7 @@ export default function VideoRequest({ reportId, missionId, place, reportText, p
   }, [jobId, videoUrl, missionId])
 
   return <section className="video-request">
-    {missionId && <header><h3>この一日を、一本の旅のお便りに。</h3><p>おすすめの旅程から最大4場面。4場面なら約24秒の動画になります。生成には数分かかります。</p></header>}
+    {missionId && <header><h3>この一日を、一本の旅のお便りに。</h3><p>おすすめの旅程から最大4場面。4場面なら約24秒の動画になります。</p><p>生成の目安は3〜6分です（4場面の場合）。混雑によって長くなることがあります。</p></header>}
     {(!jobId || status === 'failed') && <>
       <div className="input-method" role="group" aria-label="フィードバックの入力方法">
         <button type="button" aria-pressed={inputMethod === 'text'} onClick={() => setInputMethod('text')}>文字で伝える</button>
@@ -95,7 +95,7 @@ export default function VideoRequest({ reportId, missionId, place, reportText, p
         {submitting ? '参照画像を準備しています…' : missionId ? 'この旅の動画を作る →' : '動画を作る →'}</button>
     </>}
     {jobId && !videoUrl && !error &&
-      <div aria-live="polite"><p>{status === 'rendering' ? '場面をつなぎ、音を整えています。' : '旅のお便りを映像にしています。'} 数分かかる場合があります。再読み込みしても同じ依頼を確認できます。</p>
+      <div aria-live="polite"><p>{status === 'rendering' ? 'すべての場面が完成しました。映像をつなぎ、音を整えています。' : '旅のお便りを映像にしています。'} 再読み込みしても同じ依頼を確認できます。</p>
         {missionId && <><progress max={progress?.scene_count || 4} value={progress?.completed_scenes || 0} />
           <p>{progress?.completed_scenes || 0} / {progress?.scene_count || 4} 場面が完成</p>
           <ol>{progress?.scenes?.map((scene, index) => <li key={index}>{scene.name}：{scene.status === 'ready' ? '完成' : ['generating', 'submitting'].includes(scene.status) ? '映像を作成中' : 'これから'}</li>)}</ol>
