@@ -69,7 +69,10 @@ async def video_rpc(path, body=None):
         response = await client.request("POST" if body is not None else "GET", url + path,
                                         json=body, headers={"Authorization": f"Bearer {token}"})
     if response.is_error:
-        detail = response.json().get("detail", "動画生成APIに接続できませんでした。")
+        try:
+            detail = response.json().get("detail", "動画生成APIに接続できませんでした。")
+        except ValueError:
+            detail = "動画生成APIに接続できませんでした。"
         raise HTTPException(response.status_code, detail if isinstance(detail, str) else "入力を確認してください。")
     return response.json()
 

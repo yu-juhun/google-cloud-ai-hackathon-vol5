@@ -103,6 +103,14 @@ async def create_journey(request: JourneyRequest, x_michibiki_client: str = Head
     if not mission or not mission.get("result"):
         raise HTTPException(404, "保存済みの旅程が見つかりません。")
     existing = await asyncio.to_thread(db.find_journey_video, owner, request.mission_id)
+    if existing and existing["status"] == "failed" and existing["body"].get("prepared") and all(
+        scene.get("status") == "ready" and scene.get("object_name") for scene in existing["body"]["scenes"]
+    ):
+        # Editing failed AFTER generation: reuse every saved scene, not a new billable job.
+        body = deepcopy(existing["body"])
+        body.pop("error", None)
+        await asyncio.to_thread(db.save_journey_video, existing["id"], "rendering", body)
+        return {"id": existing["id"], "status": "rendering"}
     if existing and existing["status"] != "failed":
         return {"id": existing["id"], "status": existing["status"]}
     # Rehydrate names from Places without persisting the provider's raw payload.
