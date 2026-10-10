@@ -60,6 +60,23 @@ def test_create_rejects_foreign_mission_without_provider_calls():
         rpc.assert_not_called()
 
 
+def test_retry_editing_reuses_saved_job_without_generation_or_preparation():
+    job = {"id": "saved-movie", "status": "failed", "body": {"prepared": True,
+           "error": "invalid_video_result", "scenes": [{"status": "ready", "object_name": "saved-scene.mp4"}]}}
+    with patch("michibiki.db.get_mission", return_value={"result": {"itinerary": {}}}), \
+         patch("michibiki.db.find_journey_video", return_value=job), \
+         patch("michibiki.db.save_journey_video") as save, \
+         patch("michibiki.journey_video.video_rpc") as rpc, \
+         patch("michibiki.db.begin_journey_video") as begin:
+        response = TestClient(app).post("/api/journey-videos", headers={"X-Michibiki-Client": "a" * 40},
+            json={"mission_id": "own-trip", "consent": True})
+    assert response.status_code == 200
+    assert response.json() == {"id": "saved-movie", "status": "rendering"}
+    assert "error" not in save.call_args.args[2]
+    rpc.assert_not_called()
+    begin.assert_not_called()
+
+
 @pytest.mark.asyncio
 async def test_unknown_submission_is_not_repeated():
     job = {"id": "job", "client_hash": "owner", "status": "generating", "body": {"prepared": True,
