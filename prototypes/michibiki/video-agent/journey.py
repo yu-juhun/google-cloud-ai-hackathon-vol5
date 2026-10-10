@@ -84,7 +84,7 @@ def compose(clips, output, labels, fade=0.6, font=None, credit_text=None, head_t
             filters.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={durations[i]},asetpts=PTS-STARTPTS[a{i}]")
     previous_v, previous_a = "v0", "a0"
     for i, offset in enumerate(offsets, 1):
-        filters += [f"[{previous_v}][v{i}]xfade=transition={transition}:duration={fade}:offset={offset}[mixv{i}]",
+        filters += [f"[{previous_v}][v{i}]xfade=transition={transition}:duration={fade}:offset={offset},fps=24,settb=AVTB[mixv{i}]",
                     f"[{previous_a}][a{i}]acrossfade=d={fade}:c1=tri:c2=tri[mixa{i}]"]
         previous_v, previous_a = f"mixv{i}", f"mixa{i}"
     total = sum(durations) - fade * (len(clips) - 1)
