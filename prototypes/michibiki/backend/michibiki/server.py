@@ -27,8 +27,10 @@ app = FastAPI(title=f"michibiki-{ROLE}", lifespan=lifespan)
 if ROLE == "backend":
     from .media import client_hash, router as media_router
     from .video import router as video_router
+    from .journey_video import router as journey_video_router
     app.include_router(media_router)
     app.include_router(video_router)
+    app.include_router(journey_video_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173").split(","),
