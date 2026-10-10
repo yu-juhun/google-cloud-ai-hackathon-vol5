@@ -174,6 +174,11 @@ async def advance(job):
         return
     prefix = f"videos/journeys/{job['id']}/"
     try:
+        # Another poll may have advanced the job between our read and lease.
+        fresh = await asyncio.to_thread(db.get_journey_video, job["id"], job["client_hash"])
+        if not fresh or fresh["status"] in ("ready", "failed"):
+            return
+        body = deepcopy(fresh["body"])
         scene = next((s for s in body["scenes"] if s["status"] != "ready"), None)
         if scene:
             index = body["scenes"].index(scene)

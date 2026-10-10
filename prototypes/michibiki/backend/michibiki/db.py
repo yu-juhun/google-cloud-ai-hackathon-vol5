@@ -231,6 +231,14 @@ def claim_journey_progress(job_id):
         return changed.rowcount == 1
 
 
+def get_journey_video(job_id, owner):
+    with engine().connect() as conn:
+        row = conn.execute(select(journey_video_jobs).where(
+            journey_video_jobs.c.id == job_id, journey_video_jobs.c.client_hash == owner,
+        )).mappings().first()
+    return dict(row) if row else None
+
+
 def save_journey_video(job_id, status, body, object_name=None):
     with engine().begin() as conn:
         conn.execute(update(journey_video_jobs).where(journey_video_jobs.c.id == job_id)

@@ -65,7 +65,7 @@ async def video_rpc(path, body=None):
     if not url:
         raise HTTPException(503, "動画生成APIはまだ設定されていません。")
     token = await asyncio.to_thread(fetch_id_token, Request(), url)
-    async with httpx.AsyncClient(timeout=180) as client:
+    async with httpx.AsyncClient(timeout=280) as client:
         response = await client.request("POST" if body is not None else "GET", url + path,
                                         json=body, headers={"Authorization": f"Bearer {token}"})
     if response.is_error:

@@ -34,7 +34,7 @@ resource "google_cloud_run_v2_service" "video" {
   template {
     service_account                  = google_service_account.video.email
     timeout                          = "300s"
-    max_instance_request_concurrency = 2
+    max_instance_request_concurrency = 1
     scaling {
       min_instance_count = 0
       max_instance_count = 2
@@ -43,7 +43,7 @@ resource "google_cloud_run_v2_service" "video" {
       image = var.video_image
       ports { container_port = 8080 }
       resources {
-        limits   = { cpu = "2", memory = "1Gi" }
+        limits   = { cpu = "2", memory = "2Gi" }
         cpu_idle = true
       }
       dynamic "env" {

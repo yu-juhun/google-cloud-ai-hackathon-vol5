@@ -111,7 +111,7 @@ def render_movie(request):
             "/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc"] if Path(p).exists()), None)
         credits = [s["credit"] for s in request.scenes if s.get("credit")]
         credit_text = "Reference photos: " + " / ".join(
-            f"{c['author'][:35]} ({c['license']})" for c in credits) if credits else None
+            f"{c['author'][:20]} ({c['license']})" for c in credits) if credits else None
         render = compose(clips, work / "journey.mp4", [s["name"][:30] for s in request.scenes],
             font=font, credit_text=credit_text,
             # Bounded 4x6.5 sec scenes minus transitions = about 24 sec.
