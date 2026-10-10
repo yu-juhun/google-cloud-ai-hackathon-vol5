@@ -128,7 +128,10 @@ async def create_journey(request: JourneyRequest, x_michibiki_client: str = Head
             body["person_kind"] = "saved_avatar"
         else:
             url = os.environ.get("EXPERIENCE_REFERENCE_URL", "")
-            if not url.startswith("https://storage.googleapis.com/"):
+            # This is a server-controlled demo asset URL, never user-supplied.
+            allowed_hosts = {urlparse(origin).hostname for origin in os.environ.get("FRONTEND_ORIGIN", "").split(",")}
+            allowed_hosts.add("storage.googleapis.com")
+            if urlparse(url).scheme != "https" or urlparse(url).hostname not in allowed_hosts:
                 raise HTTPException(503, "人物の参照画像が未設定です。")
             async with httpx.AsyncClient(timeout=30) as client:
                 response = await client.get(url)
