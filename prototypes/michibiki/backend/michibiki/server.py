@@ -5,7 +5,7 @@ import time
 from contextlib import asynccontextmanager
 from copy import deepcopy
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import db, experience_images
@@ -25,9 +25,10 @@ async def lifespan(app):
 
 app = FastAPI(title=f"michibiki-{ROLE}", lifespan=lifespan)
 if ROLE == "backend":
-    from .media import router as media_router
-
+    from .media import client_hash, router as media_router
+    from .video import router as video_router
     app.include_router(media_router)
+    app.include_router(video_router)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("FRONTEND_ORIGIN", "http://localhost:5173").split(","),
@@ -59,17 +60,27 @@ def require_backend():
 
 
 @app.put("/api/profile")
-async def profile(profile: Profile):
+async def put_profile(profile: Profile, x_michibiki_client: str = Header()):
     require_backend()
-    return await asyncio.to_thread(db.save_profile, profile.model_dump())
+    owner_id = client_hash(x_michibiki_client)
+    return await asyncio.to_thread(db.save_profile, owner_id, profile.model_dump())
+
+
+@app.get("/api/profile")
+async def get_profile_endpoint(x_michibiki_client: str = Header()):
+    require_backend()
+    owner_id = client_hash(x_michibiki_client)
+    conditions = await asyncio.to_thread(db.get_profile, owner_id)
+    return conditions if conditions is not None else Profile().model_dump()
 
 
 @app.post("/api/missions")
-async def create_mission(request: MissionInput):
+async def create_mission(request: MissionInput, x_michibiki_client: str = Header()):
     require_backend()
+    owner_id = client_hash(x_michibiki_client)
     started = time.monotonic()
     try:
-        mission, created = await asyncio.to_thread(db.begin_mission, request)
+        mission, created = await asyncio.to_thread(db.begin_mission, owner_id, request)
     except ValueError:
         raise HTTPException(409, "同じ依頼キーが別の入力に使われています。")
     if not created:
@@ -135,10 +146,18 @@ async def hydrate(result):
     return output
 
 
-@app.get("/api/missions/{mission_id}")
-async def get_mission(mission_id: str):
+@app.get("/api/missions")
+async def list_missions_endpoint(x_michibiki_client: str = Header()):
     require_backend()
-    mission = await asyncio.to_thread(db.get_mission, mission_id)
+    owner_id = client_hash(x_michibiki_client)
+    return {"missions": await asyncio.to_thread(db.list_missions, owner_id)}
+
+
+@app.get("/api/missions/{mission_id}")
+async def get_mission(mission_id: str, x_michibiki_client: str = Header()):
+    require_backend()
+    owner_id = client_hash(x_michibiki_client)
+    mission = await asyncio.to_thread(db.get_mission, owner_id, mission_id)
     if not mission:
         raise HTTPException(404, "依頼が見つかりません。")
     if not mission.get("result"):
@@ -154,9 +173,10 @@ async def get_mission(mission_id: str):
 
 
 @app.post("/api/missions/{mission_id}/save")
-async def save(mission_id: str):
+async def save(mission_id: str, x_michibiki_client: str = Header()):
     require_backend()
-    found = await asyncio.to_thread(db.save_itinerary, mission_id)
+    owner_id = client_hash(x_michibiki_client)
+    found = await asyncio.to_thread(db.save_itinerary, owner_id, mission_id)
     if not found:
         raise HTTPException(404)
     return {"mission_id": mission_id, "saved": True}

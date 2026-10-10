@@ -294,3 +294,31 @@ async def test_close_is_a_noop_when_never_started():
     await conversation.close()  # must not raise
 
     assert conversation._session_ctx is None
+
+
+@pytest.mark.asyncio
+async def test_start_with_video_feedback_purpose_uses_that_system_prompt():
+    from live_session import VIDEO_FEEDBACK_SYSTEM_PROMPT
+
+    fake_client = MagicMock()
+    fake_client.aio.live.connect.return_value = _FakeSessionContext(MagicMock())
+
+    conversation = LiveConversation(genai_client=fake_client)
+    await conversation.start(purpose="video_feedback")
+
+    call_kwargs = fake_client.aio.live.connect.call_args.kwargs
+    assert call_kwargs["config"].system_instruction == VIDEO_FEEDBACK_SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_start_defaults_to_trip_wish_system_prompt():
+    from live_session import SYSTEM_PROMPT
+
+    fake_client = MagicMock()
+    fake_client.aio.live.connect.return_value = _FakeSessionContext(MagicMock())
+
+    conversation = LiveConversation(genai_client=fake_client)
+    await conversation.start()
+
+    call_kwargs = fake_client.aio.live.connect.call_args.kwargs
+    assert call_kwargs["config"].system_instruction == SYSTEM_PROMPT

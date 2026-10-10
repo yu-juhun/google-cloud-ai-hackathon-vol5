@@ -58,3 +58,12 @@
       ユーザーによる追記機能
   - 作業方法: 各自の個人ブランチで作業し、共用ドキュメント・既存作業物への影響を最小限にする。
     共有インフラ(Cloud Run 5サービス構成、Terraform、CI/CD等)はそのまま土台として引き継ぐ
+
+## 2026-10-06
+
+- `prototypes/michibiki`の実環境E2Eテスト中、旅行履歴が復元できない問題を発見
+  (`profiles`/`missions`が`DEMO_OWNER`固定文字列で保存されており、ブラウザ・利用者を
+  区別する手段が存在しなかったため)。既存の`avatar`/`video`機能が使う`client_hash`
+  パターンへ統一する設計をbrainstormingで合意し、
+  `concepts/michibiki-client-identity.md`として記録。設計詳細は
+  `docs/superpowers/specs/2026-10-06-mission-history-client-identity-design.md`参照。

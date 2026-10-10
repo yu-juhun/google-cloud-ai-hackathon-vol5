@@ -113,9 +113,12 @@ async def converse(websocket: WebSocket):
             voice = websocket.query_params.get("voice", "Kore")
             if voice not in ("Puck", "Charon", "Kore", "Leda"):
                 raise ValueError("Invalid voice")
+            purpose = websocket.query_params.get("purpose", "trip_wish")
+            if purpose not in ("trip_wish", "video_feedback"):
+                raise ValueError("Invalid purpose")
             import websockets
             async with websockets.connect(
-                url.replace("https://", "wss://") + f"/ws/converse?mode=intake&voice={voice}",
+                url.replace("https://", "wss://") + f"/ws/converse?mode=intake&voice={voice}&purpose={purpose}",
                 extra_headers={"Authorization": f"Bearer {token}"}, max_size=5_000_000,
             ) as upstream:
                 await websocket.send_json({"type": "session_ready"})

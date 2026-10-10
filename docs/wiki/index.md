@@ -19,3 +19,4 @@ okf_version: 0.2
 - [service-topology](./concepts/service-topology.md) — frontend / backend-api / 3 agent の5台体制
 - [frontend-mock-strategy](./concepts/frontend-mock-strategy.md) — モック先行開発と実APIへの差し替え方針
 - [deployed-endpoints](./concepts/deployed-endpoints.md) — 統合デモ環境のデプロイ済みURL
+- [michibiki-client-identity](./concepts/michibiki-client-identity.md) — prototypes/michibikiのclient_hashベース所有者モデル(旅行履歴機能)

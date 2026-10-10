@@ -7,8 +7,10 @@ terraform {
   }
 }
 provider "google" {
-  project = var.project_id
-  region  = var.region
+  project               = var.project_id
+  region                = var.region
+  user_project_override = true
+  billing_project       = var.project_id
 }
 variable "project_id" { type = string }
 variable "region" {
@@ -37,6 +39,11 @@ resource "google_project_iam_member" "vertex" {
   project  = var.project_id
   role     = "roles/aiplatform.user"
   member   = "serviceAccount:${google_service_account.runtime[each.key].email}"
+}
+resource "google_project_iam_member" "vertex_backend" {
+  project = var.project_id
+  role    = "roles/aiplatform.user"
+  member  = "serviceAccount:${google_service_account.runtime["backend"].email}"
 }
 resource "google_project_iam_member" "sql" {
   project = var.project_id
@@ -266,19 +273,20 @@ resource "google_cloud_run_v2_service" "backend" {
       dynamic "env" {
         for_each = {
           SERVICE_ROLE                    = "backend"
+          GOOGLE_CLOUD_PROJECT            = var.project_id
           ORCHESTRATOR_URL                = google_cloud_run_v2_service.orchestrator.uri
           FRONTEND_ORIGIN                 = "${var.frontend_origin},http://localhost:5173,http://127.0.0.1:5173"
           INSTANCE_CONNECTION_NAME        = google_sql_database_instance.app.connection_name
           DB_USER                         = google_sql_user.app.name
           DB_NAME                         = google_sql_database.app.name
           AVATAR_BUCKET                   = google_storage_bucket.avatars.name
-          GOOGLE_CLOUD_PROJECT            = var.project_id
           EXPERIENCE_BUCKET               = google_storage_bucket.experiences.name
           EXPERIENCE_REFERENCE_URL        = "${var.frontend_origin}/images/cafe-spring-day-trip.png"
           EXPERIENCE_IMAGE_MODEL          = "gemini-3.1-flash-image"
           EXPERIENCE_IMAGE_FALLBACK_MODEL = "gemini-2.5-flash-image"
           AVATAR_SIGNER                   = google_service_account.runtime["backend"].email
           PERSONA_URL                     = var.persona_image == "" ? "" : google_cloud_run_v2_service.persona[0].uri
+          VIDEO_URL                       = var.video_image == "" ? "" : google_cloud_run_v2_service.video[0].uri
         }
         content {
           name  = env.key
@@ -304,7 +312,8 @@ resource "google_cloud_run_v2_service" "backend" {
       }
     }
   }
-  depends_on = [google_project_iam_member.sql, google_secret_manager_secret_iam_member.db]
+  depends_on = [google_project_iam_member.sql, google_secret_manager_secret_iam_member.db,
+  google_project_iam_member.vertex_backend]
 }
 resource "google_cloud_run_v2_service_iam_member" "orchestrator" {
   name     = google_cloud_run_v2_service.orchestrator.name

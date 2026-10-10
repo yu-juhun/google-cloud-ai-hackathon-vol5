@@ -41,7 +41,7 @@ export function travelersFor(result, count, avatars = []) {
       : first?.experience || (failed ? 'この担当の分析結果を取得できませんでした。' : 'あなたの希望と条件をもとに、旅先を調べています。')
     const generatedImage = twin?.experience_image?.place_id === first?.place_id ? twin?.experience_image?.url : null
     return {
-      id: twin?.id || i, name: `わたし ${i + 1}`, ordinal: i + 1,
+      id: twin?.id || i, report_id: twin?.report_id, name: `わたし ${i + 1}`, ordinal: i + 1,
       role: twin?.assignment?.role || '旅先を調査中',
       place: place?.name || (result ? '候補地点' : '候補を探しています'),
       status: done ? 'done' : failed ? 'failed' : 'exploring',

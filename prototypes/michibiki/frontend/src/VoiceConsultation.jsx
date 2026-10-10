@@ -4,7 +4,7 @@ import { createAudioPlayback } from './persona/audio/audioPlayback'
 import { startMicCapture, rmsVolume } from './persona/audio/micCapture'
 import './voice-consultation.css'
 
-export default function VoiceConsultation({ trip, profile, onUse }) {
+export default function VoiceConsultation({ trip, profile, onUse, purpose = 'trip_wish' }) {
   const [state, setState] = useState('idle')
   const [voice, setVoice] = useState('Kore')
   const [mouth, setMouth] = useState(false)
@@ -25,7 +25,7 @@ export default function VoiceConsultation({ trip, profile, onUse }) {
       if (!apiOrigin) throw new Error('音声相談は準備中です。文字入力をご利用ください。')
       r.playback = createAudioPlayback()
       await r.playback.resume()
-      r.ws = new WebSocket(apiOrigin.replace(/^http/, 'ws') + `/api/persona/converse?voice=${voice}`)
+      r.ws = new WebSocket(apiOrigin.replace(/^http/, 'ws') + `/api/persona/converse?voice=${voice}&purpose=${purpose}`)
       await new Promise((resolve, reject) => {
         r.timer = setTimeout(() => reject(new Error('音声相談への接続がタイムアウトしました。')), 30000)
         r.ws.onopen = () => r.ws.send(JSON.stringify({ client_token: clientToken() }))

@@ -424,7 +424,43 @@ def test_websocket_forwards_a_verified_voice_name_from_the_query_string():
         with connected("/ws/converse?voice=Kore"):
             pass
 
-        mock_conversation.start.assert_called_once_with(voice_name="Kore")
+        mock_conversation.start.assert_called_once_with(voice_name="Kore", purpose="trip_wish")
+
+
+def test_websocket_forwards_a_verified_purpose_from_the_query_string():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with connected("/ws/converse?purpose=video_feedback"):
+            pass
+
+        mock_conversation.start.assert_called_once_with(voice_name=None, purpose="video_feedback")
+
+
+def test_websocket_ignores_an_unverified_purpose_from_the_query_string():
+    with patch("main._build_genai_client"), patch("main.LiveConversation") as mock_live_conversation_cls:
+        mock_conversation = mock_live_conversation_cls.return_value
+        mock_conversation.start = AsyncMock()
+        mock_conversation.close = AsyncMock()
+
+        async def fake_receive_audio_chunks():
+            return
+            yield  # pragma: no cover
+
+        mock_conversation.receive_audio_chunks = fake_receive_audio_chunks
+
+        with connected("/ws/converse?purpose=not-a-real-purpose"):
+            pass
+
+        mock_conversation.start.assert_called_once_with(voice_name=None, purpose="trip_wish")
 
 
 def test_websocket_ignores_an_unverified_voice_name_from_the_query_string():
@@ -442,7 +478,7 @@ def test_websocket_ignores_an_unverified_voice_name_from_the_query_string():
         with connected("/ws/converse?voice=not-a-real-voice"):
             pass
 
-        mock_conversation.start.assert_called_once_with(voice_name=None)
+        mock_conversation.start.assert_called_once_with(voice_name=None, purpose="trip_wish")
 
 
 def test_websocket_avatar_photo_flow_survives_youcam_failure():

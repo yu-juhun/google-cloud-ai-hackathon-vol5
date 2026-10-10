@@ -14,6 +14,7 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     create_engine,
+    delete,
     insert,
     select,
     update,
@@ -104,6 +105,19 @@ image_rate_windows = Table(
     Column("last_at", DateTime(timezone=True)),
     Column("requests", Integer, nullable=False),
 )
+video_jobs = Table(
+    "video_jobs", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("client_hash", String(64), nullable=False),
+    Column("report_id", String(36), ForeignKey("reports.id"), nullable=False),
+    Column("feedback", String, nullable=False),
+    Column("style", String, nullable=False),
+    Column("tone", String, nullable=False),
+    Column("provider_operation_name", String),
+    Column("status", String, nullable=False),  # queued / generating / rendering / ready / failed
+    Column("object_name", String),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
 
 
 def now():
@@ -154,11 +168,15 @@ def migrate(db=None):
             ).first():
                 image_rate_windows.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=3))
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 4)).first():
+                video_jobs.create(conn, checkfirst=True)
+                conn.execute(insert(migrations).values(version=4))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
         conn.execute(insert(migrations).values(version=2))
         conn.execute(insert(migrations).values(version=3))
+        conn.execute(insert(migrations).values(version=4))
 
 
 def reserve_image_request(models):
@@ -224,7 +242,7 @@ def defer_image_model(model):
         )
 
 
-def save_profile(conditions):
+def save_profile(owner_id, conditions):
     from sqlalchemy.dialects.postgresql import insert as pg_insert
     from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
@@ -232,7 +250,7 @@ def save_profile(conditions):
     upsert = pg_insert if database.dialect.name == "postgresql" else sqlite_insert
     statement = (
         upsert(profiles)
-        .values(owner_id=DEMO_OWNER, conditions=conditions, version=1, updated_at=now())
+        .values(owner_id=owner_id, conditions=conditions, version=1, updated_at=now())
         .on_conflict_do_update(
             index_elements=[profiles.c.owner_id],
             set_={
@@ -247,7 +265,15 @@ def save_profile(conditions):
     return {"conditions": conditions, "version": version}
 
 
-def begin_mission(request, retry=True):
+def get_profile(owner_id):
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(profiles.c.conditions).where(profiles.c.owner_id == owner_id)
+        ).first()
+    return row[0] if row else None
+
+
+def begin_mission(owner_id, request, retry=True):
     from sqlalchemy.exc import IntegrityError
 
     payload = request.model_dump()
@@ -256,7 +282,7 @@ def begin_mission(request, retry=True):
         old = (
             conn.execute(
                 select(missions).where(
-                    missions.c.owner_id == DEMO_OWNER,
+                    missions.c.owner_id == owner_id,
                     missions.c.idempotency_key == request.idempotency_key,
                 )
             )
@@ -267,10 +293,10 @@ def begin_mission(request, retry=True):
         if old["input_snapshot"] != payload:
             raise ValueError("idempotency_conflict")
         return dict(old), False
-    save_profile(payload["profile"])
+    save_profile(owner_id, payload["profile"])
     mission = {
         "id": str(uuid4()),
-        "owner_id": DEMO_OWNER,
+        "owner_id": owner_id,
         "idempotency_key": request.idempotency_key,
         "input_snapshot": payload,
         "status": "running",
@@ -282,7 +308,7 @@ def begin_mission(request, retry=True):
     except IntegrityError:
         if not retry:
             raise
-        return begin_mission(request, retry=False)
+        return begin_mission(owner_id, request, retry=False)
     return mission, True
 
 
@@ -340,12 +366,12 @@ def fail_mission(mission_id, error_code):
         )
 
 
-def get_mission(mission_id):
+def get_mission(owner_id, mission_id):
     with engine().connect() as conn:
         row = (
             conn.execute(
                 select(missions).where(
-                    missions.c.id == mission_id, missions.c.owner_id == DEMO_OWNER
+                    missions.c.id == mission_id, missions.c.owner_id == owner_id
                 )
             )
             .mappings()
@@ -354,7 +380,34 @@ def get_mission(mission_id):
     return dict(row) if row else None
 
 
-def save_itinerary(mission_id):
+def list_missions(owner_id, limit=20):
+    with engine().connect() as conn:
+        rows = conn.execute(
+            select(
+                missions.c.id,
+                missions.c.status,
+                missions.c.created_at,
+                missions.c.input_snapshot,
+            )
+            .where(missions.c.owner_id == owner_id)
+            .order_by(missions.c.created_at.desc())
+            .limit(limit)
+        ).mappings().all()
+    return [
+        {
+            "id": row["id"],
+            "destination": row["input_snapshot"]["trip"]["destination"],
+            "date": row["input_snapshot"]["trip"]["date"],
+            "status": row["status"],
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
+
+
+def save_itinerary(owner_id, mission_id):
+    if not get_mission(owner_id, mission_id):
+        return False
     with engine().begin() as conn:
         result = conn.execute(
             update(itineraries)
@@ -413,6 +466,81 @@ def update_avatar_set(set_id, status, assets=None):
         )
 
 
+def create_video_job(client_hash, report_id, feedback, style, tone):
+    record = dict(id=str(uuid4()), client_hash=client_hash, report_id=report_id,
+                  feedback=feedback, style=style, tone=tone, status="queued", created_at=now())
+    with engine().begin() as conn:
+        conn.execute(insert(video_jobs).values(**record))
+    return record
+
+
+def get_video_job(job_id, client_hash):
+    with engine().connect() as conn:
+        record = conn.execute(select(video_jobs).where(
+            video_jobs.c.id == job_id, video_jobs.c.client_hash == client_hash,
+        )).mappings().first()
+    return dict(record) if record else None
+
+
+def update_video_job(job_id, status, provider_operation_name=None, object_name=None):
+    values = {"status": status}
+    if provider_operation_name is not None:
+        values["provider_operation_name"] = provider_operation_name
+    if object_name is not None:
+        values["object_name"] = object_name
+    with engine().begin() as conn:
+        conn.execute(update(video_jobs).where(video_jobs.c.id == job_id).values(**values))
+
+
+def get_report(report_id):
+    with engine().connect() as conn:
+        record = conn.execute(select(reports).where(reports.c.id == report_id)).mappings().first()
+    return dict(record) if record else None
+
+
+def find_latest_ready_avatar_set(client_hash):
+    with engine().connect() as conn:
+        record = conn.execute(select(avatar_sets).where(
+            avatar_sets.c.client_hash == client_hash,
+            avatar_sets.c.status == "ready",
+        ).order_by(avatar_sets.c.created_at.desc()).limit(1)).mappings().first()
+    return dict(record) if record else None
+
+
+def find_active_video_job(client_hash, report_id):
+    with engine().connect() as conn:
+        record = conn.execute(select(video_jobs).where(
+            video_jobs.c.client_hash == client_hash,
+            video_jobs.c.report_id == report_id,
+            video_jobs.c.status.in_(("queued", "generating", "rendering")),
+        )).mappings().first()
+    return dict(record) if record else None
+
+
+def find_latest_video_job(client_hash, report_id):
+    with engine().connect() as conn:
+        record = conn.execute(select(video_jobs).where(
+            video_jobs.c.client_hash == client_hash,
+            video_jobs.c.report_id == report_id,
+        ).order_by(video_jobs.c.created_at.desc()).limit(1)).mappings().first()
+    return dict(record) if record else None
+
+
+def get_mission_profile(report_id):
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(missions.c.input_snapshot)
+            .select_from(
+                reports.join(twins, reports.c.twin_id == twins.c.id)
+                .join(missions, twins.c.mission_id == missions.c.id)
+            )
+            .where(reports.c.id == report_id)
+        ).first()
+    if not row:
+        return None
+    return row[0].get("profile")
+
+
 def save_consultation(client_hash, body):
     record_id = str(uuid4())
     with engine().begin() as conn:
@@ -422,3 +550,36 @@ def save_consultation(client_hash, body):
             )
         )
     return record_id
+
+
+def migrate_demo_owner_data(target_client_hash):
+    """One-time, manually-invoked data migration — never called from migrate() or
+    any endpoint. Moves DEMO_OWNER's profile and missions to a real client_hash.
+    Inserts a new profiles row before updating missions.owner_id (not the other way
+    around) because missions.owner_id has a plain, non-deferrable FK to
+    profiles.owner_id — updating either side first in the wrong order would violate
+    that FK mid-transaction."""
+    with engine().begin() as conn:
+        old_profile = conn.execute(
+            select(profiles).where(profiles.c.owner_id == DEMO_OWNER)
+        ).mappings().first()
+        if not old_profile:
+            return
+        target_exists = conn.execute(
+            select(profiles.c.owner_id).where(profiles.c.owner_id == target_client_hash)
+        ).first()
+        if not target_exists:
+            conn.execute(
+                insert(profiles).values(
+                    owner_id=target_client_hash,
+                    conditions=old_profile["conditions"],
+                    version=old_profile["version"],
+                    updated_at=old_profile["updated_at"],
+                )
+            )
+        conn.execute(
+            update(missions)
+            .where(missions.c.owner_id == DEMO_OWNER)
+            .values(owner_id=target_client_hash)
+        )
+        conn.execute(delete(profiles).where(profiles.c.owner_id == DEMO_OWNER))

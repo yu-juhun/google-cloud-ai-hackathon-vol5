@@ -37,6 +37,11 @@ resource "google_storage_bucket_iam_member" "avatar_reader" {
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.runtime["backend"].email}"
 }
+resource "google_storage_bucket_iam_member" "avatar_backend_writer" {
+  bucket = google_storage_bucket.avatars.name
+  role   = "roles/storage.objectCreator"
+  member = "serviceAccount:${google_service_account.runtime["backend"].email}"
+}
 resource "google_service_account_iam_member" "avatar_signer" {
   service_account_id = google_service_account.runtime["backend"].name
   role               = "roles/iam.serviceAccountTokenCreator"
