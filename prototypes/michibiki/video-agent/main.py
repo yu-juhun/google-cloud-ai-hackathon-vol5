@@ -1,5 +1,7 @@
 import base64
 import logging
+import asyncio
+from typing import Literal
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
@@ -22,21 +24,23 @@ class VideoJobRequest(BaseModel):
     report_text: str = Field(max_length=10_000)
     mobility_notes: str = Field(default="", max_length=2_000)
     feedback: str = Field(max_length=500)
-    style: str
-    tone: str
+    style: Literal["cinematic", "long_take", "narrated"]
+    tone: Literal["calm", "dramatic", "relaxed"]
+    scene_context: dict = Field(default_factory=dict)
 
 
 @app.post("/video-jobs")
 async def create_video_job(request: VideoJobRequest) -> dict[str, str]:
     image_bytes = base64.b64decode(request.image_bytes_b64, validate=True)
-    prompt = build_prompt(request.report_text, request.mobility_notes, request.style, request.tone, request.feedback)
-    operation_name = start_video_task(image_bytes, request.image_mime_type, prompt)
+    prompt = build_prompt(request.report_text, request.mobility_notes, request.style, request.tone, request.feedback,
+                          request.scene_context)
+    operation_name = await asyncio.to_thread(start_video_task, image_bytes, request.image_mime_type, prompt)
     return {"operation_name": operation_name}
 
 
 @app.get("/video-jobs/{operation_name:path}/status")
 async def get_video_job_status(operation_name: str) -> dict:
-    status, video_bytes, mime_type = video_task_status(operation_name)
+    status, video_bytes, mime_type = await asyncio.to_thread(video_task_status, operation_name)
     return {
         "status": status,
         "video_bytes_b64": base64.b64encode(video_bytes).decode("ascii") if video_bytes else None,
