@@ -30,6 +30,7 @@ def _build_client() -> genai.Client:
         vertexai=True,
         project=os.environ["VERTEX_PROJECT_ID"],
         location=os.environ.get("VERTEX_LOCATION", "us-central1"),
+        http_options=types.HttpOptions(timeout=120000, retry_options=types.HttpRetryOptions(attempts=1)),
     )
 
 
@@ -69,3 +70,23 @@ def video_task_status(operation_name: str) -> tuple[str, bytes | None, str | Non
         return "failed", None, None
     video = operation.result.generated_videos[0].video
     return "ready", video.video_bytes, video.mime_type
+
+
+def start_reference_task(references, prompt):
+    """Submit once; persist the returned operation before polling or retrying."""
+    client = _build_client()
+    try:
+        operation = client.models.generate_videos(
+            model=VEO_MODEL,
+            source=types.GenerateVideosSource(prompt=prompt),
+            config=types.GenerateVideosConfig(
+                reference_images=[types.VideoGenerationReferenceImage(
+                    image=types.Image(image_bytes=raw, mime_type=mime), reference_type="asset"
+                ) for raw, mime in references],
+                number_of_videos=1, duration_seconds=8, aspect_ratio="16:9",
+                resolution="720p", person_generation="allow_adult", generate_audio=True,
+            ),
+        )
+        return operation.name
+    finally:
+        client.close()

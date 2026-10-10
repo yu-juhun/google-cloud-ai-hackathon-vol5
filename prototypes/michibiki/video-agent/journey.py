@@ -59,7 +59,7 @@ def compose(clips, output, labels, fade=0.6, font=None, credit_text=None, head_t
     if transition not in ("fade", "fadeblack"):
         raise ValueError("Unsupported transition")
     durations = [d - t for d, t in zip(original_durations, head_trims)]
-    offsets = transition_offsets(durations, fade)
+    offsets = transition_offsets(durations, fade) if len(clips) > 1 else []
     filters = []
     args = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-filter_complex_threads", "1"]
     for i, clip in enumerate(clips):
@@ -74,8 +74,14 @@ def compose(clips, output, labels, fade=0.6, font=None, credit_text=None, head_t
         filters.append(f"[{i}:v]trim=start={head_trims[i]},setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=decrease,"
                        "pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,"
                        f"format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS{text}[v{i}]")
-        filters.append(f"[{i}:a]atrim=start={head_trims[i]},aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
-                       f"asetpts=PTS-STARTPTS[a{i}]")
+        audio = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
+                                "stream=index", "-of", "csv=p=0", str(clip)],
+                               check=True, capture_output=True, text=True).stdout.strip()
+        if audio:
+            filters.append(f"[{i}:a]atrim=start={head_trims[i]},aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                           f"asetpts=PTS-STARTPTS[a{i}]")
+        else:
+            filters.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={durations[i]},asetpts=PTS-STARTPTS[a{i}]")
     previous_v, previous_a = "v0", "a0"
     for i, offset in enumerate(offsets, 1):
         filters += [f"[{previous_v}][v{i}]xfade=transition={transition}:duration={fade}:offset={offset}[mixv{i}]",

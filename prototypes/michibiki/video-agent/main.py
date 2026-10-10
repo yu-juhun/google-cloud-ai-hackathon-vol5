@@ -8,8 +8,10 @@ from pydantic import BaseModel, Field
 
 from prompts import build_prompt
 from veo_client import start_video_task, video_task_status
+from journey_api import router as journey_router
 
 app = FastAPI(title="video-agent")
+app.include_router(journey_router)
 logger = logging.getLogger(__name__)
 
 

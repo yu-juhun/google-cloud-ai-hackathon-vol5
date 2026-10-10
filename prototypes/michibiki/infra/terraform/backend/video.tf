@@ -12,6 +12,16 @@ resource "google_project_iam_member" "video_vertex" {
   role    = "roles/aiplatform.user"
   member  = "serviceAccount:${google_service_account.video.email}"
 }
+resource "google_storage_bucket_iam_member" "journey_video_media" {
+  for_each = toset(["roles/storage.objectViewer", "roles/storage.objectCreator"])
+  bucket   = google_storage_bucket.avatars.name
+  role     = each.value
+  member   = "serviceAccount:${google_service_account.video.email}"
+  condition {
+    title      = "journey-video-objects-only"
+    expression = "resource.name.startsWith('projects/_/buckets/${google_storage_bucket.avatars.name}/objects/videos/journeys/')"
+  }
+}
 resource "google_cloud_run_v2_service" "video" {
   count               = var.video_image == "" ? 0 : 1
   name                = "michibiki-video-agent"
@@ -40,6 +50,7 @@ resource "google_cloud_run_v2_service" "video" {
         for_each = {
           VERTEX_PROJECT_ID = var.project_id
           VERTEX_LOCATION   = "us-central1"
+          MEDIA_BUCKET      = google_storage_bucket.avatars.name
         }
         content {
           name  = env.key
@@ -56,7 +67,7 @@ resource "google_cloud_run_v2_service" "video" {
       }
     }
   }
-  depends_on = [google_project_service.apis, google_project_iam_member.video_vertex]
+  depends_on = [google_project_service.apis, google_project_iam_member.video_vertex, google_storage_bucket_iam_member.journey_video_media]
 }
 resource "google_cloud_run_v2_service_iam_member" "video" {
   count    = var.video_image == "" ? 0 : 1
