@@ -6,11 +6,13 @@ import base64
 import json
 import logging
 import os
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
 from google.auth.transport.requests import Request
 from google.cloud import storage
+from google.api_core.exceptions import PreconditionFailed
 from google.genai import errors as genai_errors
 from google.genai import types
 from google.oauth2.id_token import fetch_id_token
@@ -39,6 +41,11 @@ RELEVANCE_PROMPT = """\
 
 
 def check_relevance(report_text: str, feedback: str, genai_client) -> tuple[bool, str]:
+    if not feedback.strip():
+        return True, ""
+    if genai_client is None:
+        with _genai_client() as client:
+            return check_relevance(report_text, feedback, client)
     prompt = RELEVANCE_PROMPT.format(report_text=report_text, feedback=feedback)
     response = genai_client.models.generate_content(
         model="gemini-2.5-flash-lite",
@@ -58,11 +65,14 @@ async def video_rpc(path, body=None):
     if not url:
         raise HTTPException(503, "動画生成APIはまだ設定されていません。")
     token = await asyncio.to_thread(fetch_id_token, Request(), url)
-    async with httpx.AsyncClient(timeout=180) as client:
+    async with httpx.AsyncClient(timeout=280) as client:
         response = await client.request("POST" if body is not None else "GET", url + path,
                                         json=body, headers={"Authorization": f"Bearer {token}"})
     if response.is_error:
-        detail = response.json().get("detail", "動画生成APIに接続できませんでした。")
+        try:
+            detail = response.json().get("detail", "動画生成APIに接続できませんでした。")
+        except ValueError:
+            detail = "動画生成APIに接続できませんでした。"
         raise HTTPException(response.status_code, detail if isinstance(detail, str) else "入力を確認してください。")
     return response.json()
 
@@ -70,14 +80,15 @@ async def video_rpc(path, body=None):
 class VideoRequest(BaseModel):
     report_id: str
     feedback: str = Field(max_length=500)
-    style: str
-    tone: str
+    style: Literal["cinematic", "long_take", "narrated"]
+    tone: Literal["calm", "dramatic", "relaxed"]
     consent: bool
 
 
 def _genai_client():
     from google import genai
-    return genai.Client(vertexai=True, project=os.environ["GOOGLE_CLOUD_PROJECT"], location="global")
+    return genai.Client(vertexai=True, project=os.environ["GOOGLE_CLOUD_PROJECT"], location="global",
+                        http_options=types.HttpOptions(timeout=30000))
 
 
 def _report_text(report):
@@ -107,7 +118,7 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
     if not request.consent:
         raise HTTPException(400, "動画生成への同意が必要です。")
     owner = client_hash(x_michibiki_client)
-    report = await asyncio.to_thread(db.get_report, request.report_id)
+    report = await asyncio.to_thread(db.get_report, request.report_id, owner)
     if not report:
         raise HTTPException(404, "指定された体験談が見つかりません。")
     if await asyncio.to_thread(db.find_active_video_job, owner, request.report_id):
@@ -115,7 +126,7 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
     report_text = _report_text(report)
     try:
         on_topic, reason = await asyncio.to_thread(
-            check_relevance, report_text, request.feedback, _genai_client(),
+            check_relevance, report_text, request.feedback, None,
         )
     except genai_errors.APIError as e:
         logger.warning("relevance guard Gemini call failed: %s", e)
@@ -125,7 +136,7 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
     experience_image = report["body"].get("experience_image") or {}
     if experience_image.get("status") == "ready":
         image_bytes = await asyncio.to_thread(_download_experience_image, experience_image)
-        image_mime_type = "image/png"
+        image_mime_type = "image/jpeg" if image_bytes.startswith(b"\xff\xd8") else "image/png"
     else:
         avatar_record = await asyncio.to_thread(db.find_latest_ready_avatar_set, owner)
         if not avatar_record:
@@ -134,6 +145,14 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
         image_bytes = await asyncio.to_thread(_download_avatar_image, avatar_record)
         image_mime_type = image_asset.get("mime_type", "image/png")
     mobility_profile = await asyncio.to_thread(db.get_mission_profile, request.report_id)
+    scene_context = await asyncio.to_thread(db.get_report_scene_context, request.report_id)
+    assessment = (report["body"].get("assessments") or [{}])[0]
+    scene_context.update(
+        scene_kind=experience_image.get("scene_kind", "experience"),
+        assessment_status=assessment.get("status", "uncertain"),
+        facts=assessment.get("facts", [])[:4],
+        has_experience_image=experience_image.get("status") == "ready",
+    )
     mobility_notes = (
         f"車いす種別: {mobility_profile['chair']}、横幅: {mobility_profile['width']}cm、"
         f"通行可能な段差: {mobility_profile['step']}cm"
@@ -151,6 +170,7 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
             "feedback": request.feedback,
             "style": request.style,
             "tone": request.tone,
+            "scene_context": scene_context,
         })
     except Exception:
         await asyncio.to_thread(db.update_video_job, record["id"], "failed")
@@ -181,6 +201,23 @@ async def get_video_by_report(report_id: str, x_michibiki_client: str = Header()
     job = await asyncio.to_thread(db.find_latest_video_job, owner, report_id)
     if not job:
         raise HTTPException(404, "この体験の動画はまだありません。")
+    # Completion must not depend on a browser keeping its WebSocket open.
+    if job["status"] in ("queued", "generating", "rendering") and job.get("provider_operation_name"):
+        try:
+            result = await video_rpc(f"/video-jobs/{job['provider_operation_name']}/status")
+            if result["status"] == "ready":
+                object_name = f"videos/{job['id']}"
+                raw = base64.b64decode(result["video_bytes_b64"], validate=True)
+                if not raw:
+                    raise ValueError("Empty generated video")
+                await asyncio.to_thread(_upload_video, object_name, raw, result["mime_type"])
+                await asyncio.to_thread(db.update_video_job, job["id"], "ready", object_name=object_name)
+                job.update(status="ready", object_name=object_name)
+            elif result["status"] == "failed":
+                await asyncio.to_thread(db.update_video_job, job["id"], "failed")
+                job["status"] = "failed"
+        except (HTTPException, httpx.HTTPError) as exc:
+            logger.warning("video_status_retry job_id=%s error_type=%s", job["id"], type(exc).__name__)
     video_url = await asyncio.to_thread(_sign_video_url, job["object_name"]) if job["status"] == "ready" else None
     return {"status": job["status"], "video_url": video_url, "job_id": job["id"]}
 
@@ -189,7 +226,15 @@ def _upload_video(object_name, video_bytes, mime_type):
     bucket = storage.Client().bucket(os.environ["AVATAR_BUCKET"])
     blob = bucket.blob(object_name)
     blob.cache_control = "private, max-age=3600"
-    blob.upload_from_string(video_bytes, content_type=mime_type)
+    # HTTP recovery and WebSocket may notice completion together. Create once;
+    # never overwrite a saved clip (the runtime only has objectCreator).
+    if blob.exists():
+        return
+    try:
+        blob.upload_from_string(video_bytes, content_type=mime_type, if_generation_match=0)
+    except PreconditionFailed:
+        if not blob.exists():
+            raise
 
 
 @router.websocket("/video-jobs/{job_id}/progress")
@@ -244,7 +289,13 @@ async def video_progress(websocket: WebSocket, job_id: str):
                         await asyncio.to_thread(db.update_video_job, job_id, "generating")
                         record["status"] = "generating"
                 except (HTTPException, httpx.HTTPError) as e:
-                    logger.warning("video progress polling failed for job %s: %s", job_id, e)
+                    code = getattr(e, "status_code", None)
+                    if code is None and getattr(e, "response", None) is not None:
+                        code = e.response.status_code
+                    logger.warning("video_progress_retry job_id=%s status=%s error_type=%s", job_id, code, type(e).__name__)
+                    if code in (429, 500, 502, 503, 504) or isinstance(e, httpx.TransportError):
+                        await asyncio.sleep(10)
+                        continue
                     await asyncio.to_thread(db.update_video_job, job_id, "failed")
                     await websocket.send_json({"type": "status", "status": "failed",
                                                "message": "動画生成に失敗しました。もう一度お試しください。"})

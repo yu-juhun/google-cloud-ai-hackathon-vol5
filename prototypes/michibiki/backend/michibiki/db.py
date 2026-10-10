@@ -14,7 +14,6 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     create_engine,
-    delete,
     insert,
     select,
     update,
@@ -118,6 +117,17 @@ video_jobs = Table(
     Column("object_name", String),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
+journey_video_jobs = Table(
+    "journey_video_jobs", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("client_hash", String(64), nullable=False),
+    Column("mission_id", String(36), ForeignKey("missions.id"), nullable=False),
+    Column("status", String, nullable=False),
+    Column("body", json_type, nullable=False),
+    Column("object_name", String),
+    Column("progress_until", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
 
 
 def now():
@@ -171,12 +181,74 @@ def migrate(db=None):
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 4)).first():
                 video_jobs.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=4))
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 5)).first():
+                journey_video_jobs.create(conn, checkfirst=True)
+                conn.execute(insert(migrations).values(version=5))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
         conn.execute(insert(migrations).values(version=2))
         conn.execute(insert(migrations).values(version=3))
         conn.execute(insert(migrations).values(version=4))
+        conn.execute(insert(migrations).values(version=5))
+
+
+def find_journey_video(owner, mission_id):
+    with engine().connect() as conn:
+        row = conn.execute(select(journey_video_jobs).where(
+            journey_video_jobs.c.client_hash == owner,
+            journey_video_jobs.c.mission_id == mission_id,
+        ).order_by(journey_video_jobs.c.created_at.desc()).limit(1)).mappings().first()
+    return dict(row) if row else None
+
+
+def begin_journey_video(owner, mission_id, body):
+    """One active/completed movie per trip; serialize concurrent button presses."""
+    with engine().begin() as conn:
+        if conn.dialect.name == "postgresql":
+            from sqlalchemy import text
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                         {"key": f"journey:{owner}:{mission_id}"})
+        latest = conn.execute(select(journey_video_jobs).where(
+            journey_video_jobs.c.client_hash == owner,
+            journey_video_jobs.c.mission_id == mission_id,
+        ).order_by(journey_video_jobs.c.created_at.desc()).limit(1)).mappings().first()
+        if latest and latest["status"] != "failed":
+            return dict(latest), False
+        record = dict(id=str(uuid4()), client_hash=owner, mission_id=mission_id,
+                      status="queued", body=body, created_at=now())
+        conn.execute(insert(journey_video_jobs).values(**record))
+        return record, True
+
+
+def claim_journey_progress(job_id):
+    with engine().begin() as conn:
+        changed = conn.execute(update(journey_video_jobs).where(
+            journey_video_jobs.c.id == job_id,
+            (journey_video_jobs.c.progress_until.is_(None)) |
+            (journey_video_jobs.c.progress_until < now()),
+        ).values(progress_until=now() + timedelta(seconds=300)))
+        return changed.rowcount == 1
+
+
+def get_journey_video(job_id, owner):
+    with engine().connect() as conn:
+        row = conn.execute(select(journey_video_jobs).where(
+            journey_video_jobs.c.id == job_id, journey_video_jobs.c.client_hash == owner,
+        )).mappings().first()
+    return dict(row) if row else None
+
+
+def save_journey_video(job_id, status, body, object_name=None):
+    with engine().begin() as conn:
+        conn.execute(update(journey_video_jobs).where(journey_video_jobs.c.id == job_id)
+                     .values(status=status, body=body, object_name=object_name))
+
+
+def release_journey_progress(job_id):
+    with engine().begin() as conn:
+        conn.execute(update(journey_video_jobs).where(journey_video_jobs.c.id == job_id)
+                     .values(progress_until=None))
 
 
 def reserve_image_request(models):
@@ -492,9 +564,14 @@ def update_video_job(job_id, status, provider_operation_name=None, object_name=N
         conn.execute(update(video_jobs).where(video_jobs.c.id == job_id).values(**values))
 
 
-def get_report(report_id):
+def get_report(report_id, owner_id=None):
     with engine().connect() as conn:
-        record = conn.execute(select(reports).where(reports.c.id == report_id)).mappings().first()
+        query = select(reports).where(reports.c.id == report_id)
+        if owner_id is not None:
+            query = query.join(twins, reports.c.twin_id == twins.c.id).join(
+                missions, twins.c.mission_id == missions.c.id
+            ).where(missions.c.owner_id == owner_id)
+        record = conn.execute(query).mappings().first()
     return dict(record) if record else None
 
 
@@ -552,6 +629,25 @@ def save_consultation(client_hash, body):
     return record_id
 
 
+def get_report_scene_context(report_id):
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(missions.c.input_snapshot, missions.c.result, reports.c.body)
+            .select_from(reports.join(twins, reports.c.twin_id == twins.c.id)
+                         .join(missions, twins.c.mission_id == missions.c.id))
+            .where(reports.c.id == report_id)
+        ).mappings().first()
+    if not row:
+        return {}
+    trip = row["input_snapshot"].get("trip", {})
+    assessment = (row["body"].get("assessments") or [{}])[0]
+    itinerary = (row["result"] or {}).get("itinerary", {})
+    stop = next((s for s in itinerary.get("stops", [])
+                 if s.get("place_id") == assessment.get("place_id")), {})
+    return {"destination": trip.get("destination", ""), "wish": trip.get("wish", ""),
+            "activity": stop.get("activity", ""), "trip_title": itinerary.get("title", "")}
+
+
 def migrate_demo_owner_data(target_client_hash):
     """One-time, manually-invoked data migration — never called from migrate() or
     any endpoint. Moves DEMO_OWNER's profile and missions to a real client_hash.
@@ -582,4 +678,4 @@ def migrate_demo_owner_data(target_client_hash):
             .where(missions.c.owner_id == DEMO_OWNER)
             .values(owner_id=target_client_hash)
         )
-        conn.execute(delete(profiles).where(profiles.c.owner_id == DEMO_OWNER))
+        # Keep the legacy profile as a recoverable record; never delete user data.

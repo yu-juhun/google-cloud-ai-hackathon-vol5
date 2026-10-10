@@ -23,7 +23,7 @@ variable "frontend_origin" { type = string }
 resource "google_project_service" "apis" {
   for_each = toset(["sqladmin.googleapis.com", "secretmanager.googleapis.com", "apikeys.googleapis.com",
     "places.googleapis.com", "aiplatform.googleapis.com", "run.googleapis.com",
-  "iamcredentials.googleapis.com", "storage.googleapis.com"])
+  "iamcredentials.googleapis.com", "storage.googleapis.com", "cloudresourcemanager.googleapis.com"])
   service            = each.value
   disable_on_destroy = false
 }
@@ -39,11 +39,6 @@ resource "google_project_iam_member" "vertex" {
   project  = var.project_id
   role     = "roles/aiplatform.user"
   member   = "serviceAccount:${google_service_account.runtime[each.key].email}"
-}
-resource "google_project_iam_member" "vertex_backend" {
-  project = var.project_id
-  role    = "roles/aiplatform.user"
-  member  = "serviceAccount:${google_service_account.runtime["backend"].email}"
 }
 resource "google_project_iam_member" "sql" {
   project = var.project_id
@@ -313,7 +308,7 @@ resource "google_cloud_run_v2_service" "backend" {
     }
   }
   depends_on = [google_project_iam_member.sql, google_secret_manager_secret_iam_member.db,
-  google_project_iam_member.vertex_backend]
+  google_project_iam_member.experience_vertex]
 }
 resource "google_cloud_run_v2_service_iam_member" "orchestrator" {
   name     = google_cloud_run_v2_service.orchestrator.name

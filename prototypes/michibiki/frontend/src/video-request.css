@@ -9,3 +9,7 @@
 .video-request .journey-button:disabled{opacity:.55;cursor:default;box-shadow:none;border-bottom:0}
 .video-request .video-warning{color:#a04444}
 .video-request video{width:100%;border-radius:12px}
+.journey-video-form { grid-column: 1 / -1; }
+.video-request progress { width: 100%; height: 12px; accent-color: #e879a3; }
+.video-request h3 { color: #456d91; }
+.video-request ol { line-height: 1.8; padding-left: 1.5em; }

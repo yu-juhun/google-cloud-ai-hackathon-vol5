@@ -52,7 +52,7 @@ def test_migration_and_idempotency(database):
     with database.connect() as conn:
         assert conn.execute(select(func.count()).select_from(db.missions)).scalar() == 1
         assert (
-            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 4
+            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 5
         )
 
 
@@ -138,7 +138,7 @@ def test_migrate_demo_owner_data_moves_profile_and_missions(database):
 
     db.migrate_demo_owner_data("real-client-hash")
 
-    assert db.get_profile(db.DEMO_OWNER) is None
+    assert db.get_profile(db.DEMO_OWNER) == {"chair": "手動車いす"}
     assert db.get_profile("real-client-hash") == {"chair": "手動車いす"}
     assert db.get_mission(db.DEMO_OWNER, mission["id"]) is None
     assert db.get_mission("real-client-hash", mission["id"]) is not None
