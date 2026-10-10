@@ -72,8 +72,8 @@ def compose(clips, output, labels, fade=0.6, font=None, credit_text=None, head_t
                     "fontcolor=white:fontsize=28:shadowcolor=black:shadowx=1:shadowy=1:x=36:y=h-76:"
                     f"alpha='min(1,max(0,min((t-0.5)/0.3,({durations[i]}-0.5-t)/0.3)))'")
         filters.append(f"[{i}:v]trim=start={head_trims[i]},setpts=PTS-STARTPTS,scale=1280:720:force_original_aspect_ratio=decrease,"
-                       "pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,"
-                       f"format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS{text}[v{i}]")
+                       "pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,"
+                       f"format=yuv420p,settb=AVTB,setpts=PTS-STARTPTS{text},fps=24[v{i}]")
         audio = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries",
                                 "stream=index", "-of", "csv=p=0", str(clip)],
                                check=True, capture_output=True, text=True).stdout.strip()
@@ -84,7 +84,7 @@ def compose(clips, output, labels, fade=0.6, font=None, credit_text=None, head_t
             filters.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={durations[i]},asetpts=PTS-STARTPTS[a{i}]")
     previous_v, previous_a = "v0", "a0"
     for i, offset in enumerate(offsets, 1):
-        filters += [f"[{previous_v}][v{i}]xfade=transition={transition}:duration={fade}:offset={offset},fps=24,settb=AVTB[mixv{i}]",
+        filters += [f"[{previous_v}][v{i}]xfade=transition={transition}:duration={fade}:offset={offset},fps=24[mixv{i}]",
                     f"[{previous_a}][a{i}]acrossfade=d={fade}:c1=tri:c2=tri[mixa{i}]"]
         previous_v, previous_a = f"mixv{i}", f"mixa{i}"
     total = sum(durations) - fade * (len(clips) - 1)

@@ -44,4 +44,5 @@ def test_every_crossfade_reestablishes_constant_frame_rate(tmp_path):
         compose([tmp_path / f"scene-{i}.mp4" for i in range(4)], tmp_path / "out.mp4", ["place"] * 4)
     args = run.call_args_list[-2].args[0]
     filters = args[args.index("-filter_complex") + 1]
-    assert filters.count(",fps=24,settb=AVTB[mixv") == 3
+    assert filters.count(",fps=24[mixv") == 3
+    assert filters.count(",fps=24[v") == 4
