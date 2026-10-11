@@ -9,6 +9,7 @@ from datetime import timedelta
 import google.auth
 import httpx
 from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
+from google.api_core.exceptions import NotFound
 from google.auth.transport.requests import Request
 from google.cloud import storage
 from google.oauth2.id_token import fetch_id_token
@@ -54,6 +55,13 @@ async def capabilities():
     return await persona_rpc("/capabilities")
 
 
+async def _delete_pool_blob(bucket, object_name):
+    try:
+        await asyncio.to_thread(bucket.blob(object_name).delete)
+    except NotFound:
+        pass
+
+
 @router.post("/avatars")
 async def create(photo: AvatarPhoto, x_michibiki_client: str = Header()):
     owner = client_hash(x_michibiki_client)
@@ -62,20 +70,26 @@ async def create(photo: AvatarPhoto, x_michibiki_client: str = Header()):
     version = await asyncio.to_thread(db.get_current_avatar_version, owner)
     used = await asyncio.to_thread(db.get_used_template_ids, owner, version)
     unused = list(all_ids - used)
-    if len(unused) < 10:
-        old_pool = await asyncio.to_thread(db.get_avatar_pool, owner, version)
-        if old_pool:
-            bucket = storage.Client().bucket(os.environ["AVATAR_BUCKET"])
-            for entry in old_pool:
-                bucket.blob(entry["object_name"]).delete()
-            await asyncio.to_thread(db.delete_avatar_pool_version, owner, version)
-        version += 1
-        unused = list(all_ids)
-    chosen = random.sample(unused, min(10, len(unused)))
+    wraps = len(unused) < 10
+    target_version = version + 1 if wraps else version
+    pool = list(all_ids) if wraps else unused
+    chosen = random.sample(pool, min(10, len(pool)))
+    # Submit the new batch BEFORE touching the old pool: if persona-agent-backend
+    # rejects this (bad photo, 503, etc.) the user keeps their existing avatars
+    # instead of losing everything with nothing to replace it.
     result = await persona_rpc("/avatar-jobs-batch", {
         "photo": photo.photo, "consent": photo.consent, "template_ids": chosen,
     })
-    record = await asyncio.to_thread(db.create_avatar_set, owner, result["tasks"], version)
+    if wraps:
+        old_pool = await asyncio.to_thread(db.get_avatar_pool, owner, version)
+        if old_pool:
+            bucket = storage.Client().bucket(os.environ["AVATAR_BUCKET"])
+            await asyncio.gather(*(_delete_pool_blob(bucket, entry["object_name"]) for entry in old_pool))
+            await asyncio.to_thread(db.delete_avatar_pool_version, owner, version)
+            # The profile's selected avatar may point at an object we just deleted;
+            # clear it so get()'s "default to first new avatar" logic re-fires.
+            await asyncio.to_thread(db.set_profile_avatar, owner, None)
+    record = await asyncio.to_thread(db.create_avatar_set, owner, result["tasks"], target_version)
     return {"id": record["id"], "status": record["status"], "avatar_count": len(chosen)}
 
 

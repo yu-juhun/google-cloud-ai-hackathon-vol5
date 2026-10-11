@@ -264,3 +264,60 @@ def test_migration_5_upgrades_a_pre_existing_version_4_database(tmp_path, monkey
     assert db.get_profile_avatar("legacy-owner") == "avatars/u/female_manga_mood"
 
     engine.dispose()
+
+
+def test_migration_5_upgrades_avatar_sets_old_shape_to_new_shape(tmp_path, monkeypatch):
+    """Regression test for C1: builds a REAL pre-v5 database that actually has an
+    avatar_sets table in its OLD shape (provider_task_id String, assets JSON, no
+    version column -- the shape Task 3 replaced), plus the rest of the pre-v5
+    schema, with schema_migrations rows 1-4 already applied. Runs the current
+    db.migrate() against it and then calls create_avatar_set() with the NEW
+    signature (client_hash, provider_task_ids, version). Before the fix, migrate()
+    never touched avatar_sets, so the old-shape table survived and this call
+    raised `sqlite3.OperationalError: table avatar_sets has no column named
+    provider_task_ids`."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy_avatar_sets.db'}")
+    monkeypatch.setattr(db, "engine", lambda: engine)
+
+    legacy_metadata = MetaData()
+    legacy_migrations = Table(
+        "schema_migrations", legacy_metadata, Column("version", Integer, primary_key=True)
+    )
+    legacy_profiles = Table(
+        "profiles",
+        legacy_metadata,
+        Column("owner_id", String, primary_key=True),
+        Column("conditions", JSON(), nullable=False),
+        Column("version", Integer, nullable=False),
+        Column("updated_at", DateTime(timezone=True), nullable=False),
+    )
+    legacy_avatar_sets = Table(
+        "avatar_sets",
+        legacy_metadata,
+        Column("id", String(36), primary_key=True),
+        Column("client_hash", String(64), nullable=False),
+        Column("provider_task_id", String, nullable=False),
+        Column("status", String, nullable=False),
+        Column("assets", JSON()),
+        Column("created_at", DateTime(timezone=True), nullable=False),
+    )
+    with engine.begin() as conn:
+        legacy_metadata.create_all(conn)
+        conn.execute(insert(legacy_profiles).values(
+            owner_id="legacy-owner-2", conditions={}, version=1, updated_at=datetime.now(UTC),
+        ))
+        conn.execute(insert(legacy_avatar_sets).values(
+            id="old-set-1", client_hash="client-old", provider_task_id="task-abc",
+            status="ready", assets=["avatars/u/old-shape"], created_at=datetime.now(UTC),
+        ))
+        for v in (1, 2, 3, 4):
+            conn.execute(insert(legacy_migrations).values(version=v))
+
+    db.migrate(engine)
+
+    record = db.create_avatar_set("client-upgrade-2", ["task-1", "task-2"], 1)
+    assert record["provider_task_ids"] == ["task-1", "task-2"]
+    fetched = db.get_avatar_set(record["id"], "client-upgrade-2")
+    assert fetched["status"] == "generating"
+
+    engine.dispose()

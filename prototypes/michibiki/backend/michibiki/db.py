@@ -185,6 +185,12 @@ def migrate(db=None):
 
                 avatar_pool.create(conn, checkfirst=True)
                 conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_object_name VARCHAR"))
+                # avatar_sets changed shape (provider_task_id -> provider_task_ids JSON,
+                # assets dropped, version added NOT NULL). Old rows' `assets` data is in
+                # the old incompatible shape and unreadable by the new code anyway, so
+                # drop and recreate rather than trying to ALTER in place.
+                avatar_sets.drop(conn, checkfirst=True)
+                avatar_sets.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=5))
             return
         metadata.create_all(conn)

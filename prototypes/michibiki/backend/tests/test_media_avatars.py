@@ -151,3 +151,78 @@ def test_select_avatar_accepts_an_object_name_in_the_callers_pool(database):
                           headers={"X-Michibiki-Client": token})
     assert response.status_code == 200
     assert db.get_profile_avatar(owner) == "avatars/a/0"
+
+
+@patch("michibiki.media.storage.Client")
+@patch("michibiki.media.persona_rpc", new_callable=AsyncMock)
+def test_wraparound_clears_the_stale_profile_avatar_selection(mock_rpc, mock_storage, database):
+    """Regression test for I2: a profile that had selected an avatar from the
+    old (version 1) pool must have that selection cleared when the pool wraps
+    to version 2, so get()'s "default to first new avatar if none selected"
+    logic actually re-fires instead of leaving the icon pointed at a deleted
+    object."""
+    token = "q" * 64
+    owner = client_hash(token)
+    db.add_avatar_pool_entries(owner, 1, [
+        {"template_id": f"female_style_{i}", "object_name": f"avatars/prev/{i}"} for i in range(8)
+    ])  # only 4 unused of 12 -> below the 10 threshold, triggers wraparound
+    db.set_profile_avatar(owner, "avatars/prev/0")
+    assert db.get_profile_avatar(owner) == "avatars/prev/0"
+
+    mock_rpc.side_effect = [
+        _catalog(),
+        {"tasks": [{"template_id": f"female_style_{i}", "task_id": f"task-{i}"} for i in range(10)]},
+    ]
+    import os as _os
+    _os.environ["AVATAR_BUCKET"] = "test-avatar-bucket"
+    headers = {"X-Michibiki-Client": token}
+    response = client.post("/api/avatars", json={"photo": "ZmFrZQ==", "consent": True}, headers=headers)
+    assert response.status_code == 200
+
+    assert db.get_profile_avatar(owner) is None  # stale selection cleared on wraparound
+
+
+@patch("michibiki.media.persona_rpc", new_callable=AsyncMock)
+def test_wraparound_batch_submit_failure_leaves_old_pool_intact(mock_rpc, database, monkeypatch):
+    """Regression test for I3(a): if submitting the new batch to
+    persona-agent-backend fails, the old pool (up to the deletion threshold)
+    must still be there afterward -- the user must not lose their existing
+    avatars without gaining replacements."""
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("AVATAR_BUCKET", "test-avatar-bucket")
+    token = "s" * 64
+    owner = client_hash(token)
+    db.add_avatar_pool_entries(owner, 1, [
+        {"template_id": f"female_style_{i}", "object_name": f"avatars/prev/{i}"} for i in range(8)
+    ])  # below the 10 threshold -> would wrap
+    mock_rpc.side_effect = [_catalog(), HTTPException(503, "down")]
+    headers = {"X-Michibiki-Client": token}
+    response = client.post("/api/avatars", json={"photo": "ZmFrZQ==", "consent": True}, headers=headers)
+    assert response.status_code == 503
+    assert len(db.get_avatar_pool(owner, 1)) == 8  # old pool untouched
+
+
+@patch("michibiki.media.storage.Client")
+@patch("michibiki.media.persona_rpc", new_callable=AsyncMock)
+def test_wraparound_tolerates_a_missing_blob_during_pool_cleanup(mock_rpc, mock_storage, database, monkeypatch):
+    """Regression test for I3(b): a NotFound raised by one blob's delete() during
+    wraparound cleanup must not propagate as an unhandled exception / 500."""
+    from google.api_core.exceptions import NotFound
+
+    monkeypatch.setenv("AVATAR_BUCKET", "test-avatar-bucket")
+    token = "r" * 64
+    owner = client_hash(token)
+    db.add_avatar_pool_entries(owner, 1, [
+        {"template_id": f"female_style_{i}", "object_name": f"avatars/prev/{i}"} for i in range(8)
+    ])
+    mock_blob = mock_storage.return_value.bucket.return_value.blob.return_value
+    mock_blob.delete.side_effect = NotFound("gone")
+    mock_rpc.side_effect = [
+        _catalog(),
+        {"tasks": [{"template_id": f"female_style_{i}", "task_id": f"task-{i}"} for i in range(10)]},
+    ]
+    headers = {"X-Michibiki-Client": token}
+    response = client.post("/api/avatars", json={"photo": "ZmFrZQ==", "consent": True}, headers=headers)
+    assert response.status_code == 200
+    assert db.get_avatar_pool(owner, 1) == []  # cleanup still completed despite the missing blob
