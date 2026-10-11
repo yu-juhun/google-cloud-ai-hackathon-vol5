@@ -131,7 +131,7 @@ async def create_journey(request: JourneyRequest, x_michibiki_client: str = Head
     prefix = f"videos/journeys/{job['id']}/"
     try:
         avatar = await asyncio.to_thread(db.find_latest_ready_avatar_set, owner)
-        if avatar:
+        if avatar and isinstance(avatar.get("assets"), dict) and avatar["assets"].get("assets"):
             person = await asyncio.to_thread(_download_avatar_image, avatar)
             body["person_kind"] = "saved_avatar"
         else:

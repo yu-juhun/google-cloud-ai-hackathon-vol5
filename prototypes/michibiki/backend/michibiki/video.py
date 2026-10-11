@@ -139,11 +139,11 @@ async def create_video_job(request: VideoRequest, x_michibiki_client: str = Head
         image_mime_type = "image/jpeg" if image_bytes.startswith(b"\xff\xd8") else "image/png"
     else:
         avatar_record = await asyncio.to_thread(db.find_latest_ready_avatar_set, owner)
-        if not avatar_record:
+        if not avatar_record or not isinstance(avatar_record.get("assets"), dict) or not avatar_record["assets"].get("assets"):
             raise HTTPException(404, "まずアバター画像の生成を完了してください。")
         image_asset = avatar_record["assets"]["assets"][0]
         image_bytes = await asyncio.to_thread(_download_avatar_image, avatar_record)
-        image_mime_type = image_asset.get("mime_type", "image/png")
+        image_mime_type = "image/jpeg" if image_bytes.startswith(b"\xff\xd8") else image_asset.get("mime_type", "image/png")
     mobility_profile = await asyncio.to_thread(db.get_mission_profile, request.report_id)
     scene_context = await asyncio.to_thread(db.get_report_scene_context, request.report_id)
     assessment = (report["body"].get("assessments") or [{}])[0]

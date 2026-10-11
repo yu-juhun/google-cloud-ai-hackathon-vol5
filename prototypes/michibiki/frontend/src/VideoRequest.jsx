@@ -6,7 +6,7 @@ import './video-request.css'
 const STYLES = [['cinematic', 'シネマティック'], ['long_take', 'ロングテイク'], ['narrated', 'ナレーション付き']]
 const TONES = [['calm', '穏やかな'], ['dramatic', 'ドラマチックな'], ['relaxed', '落ち着いた']]
 
-export default function VideoRequest({ reportId, missionId, place, reportText, profile }) {
+export default function VideoRequest({ reportId, missionId, place, reportText, profile, profileAvatarUrl }) {
   const [feedback, setFeedback] = useState('')
   const [inputMethod, setInputMethod] = useState('text')
   const [style, setStyle] = useState('cinematic')
@@ -79,7 +79,7 @@ export default function VideoRequest({ reportId, missionId, place, reportText, p
         <button type="button" aria-pressed={inputMethod === 'text'} onClick={() => setInputMethod('text')}>文字で伝える</button>
         <button type="button" aria-pressed={inputMethod === 'voice'} onClick={() => setInputMethod('voice')}>声で相談する</button>
       </div>
-      {inputMethod === 'voice' && <VoiceConsultation trip={{ destination: place, wish: reportText }} profile={profile} onUse={useConsultation} purpose="video_feedback" />}
+      {inputMethod === 'voice' && <VoiceConsultation trip={{ destination: place, wish: reportText }} profile={profile} profileAvatarUrl={profileAvatarUrl} onUse={useConsultation} purpose="video_feedback" />}
       <label>動画に込めたいこと（任意）<textarea placeholder="例：景色を見つけた瞬間と、ほっとひと休みする表情を見たい" maxLength={500} value={feedback} onChange={e => setFeedback(e.target.value)} disabled={submitting} />
         <small>{feedback.length}/500</small></label>
       {!missionId && <><label>動画スタイル<select value={style} onChange={e => setStyle(e.target.value)} disabled={submitting}>
