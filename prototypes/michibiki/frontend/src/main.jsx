@@ -61,6 +61,20 @@ function App() {
   const [liveInput, setLiveInput] = useState(null)
   const [detailAgent, setDetailAgent] = useState(null)
   const [tripSaved, setTripSaved] = useState(false)
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState(null)
+  const refreshProfileAvatarUrl = async () => {
+    try {
+      const data = await api('/api/avatars/pool')
+      setProfileAvatarUrl(data.avatars.find(a => a.object_name === data.selected)?.url || null)
+    } catch (err) {
+      // silently fail
+    }
+  }
+  useEffect(() => {
+    if (mediaState.status === 'ready') {
+      refreshProfileAvatarUrl()
+    }
+  }, [mediaState.status])
   useEffect(() => { setTripSaved(false) }, [result?.mission_id])
   const displayTrip = liveInput?.trip || trip
   const displayProfile = liveInput?.profile || profile
@@ -96,11 +110,11 @@ function App() {
 
   return <main>
     <a className="skip-link" href="#content">本文へ移動</a>
-    <nav aria-label="メインナビゲーション"><button className="brand" onClick={() => go('home')} aria-label="michibiki のホームへ"><svg className="brand-mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="2" y="2" width="30" height="30" rx="10" fill="#e8f7ff"/><path d="M9 10.5c3.8-3.1 10.5-2.9 13.5.7 3 3.7.8 8.1-2.3 9.8-3.2 1.7-6.7.2-7.1 4.4" fill="none" stroke="#4d85b3" strokeWidth="3" strokeLinecap="round"/><circle cx="13" cy="25" r="3.5" fill="#ef8db3"/></svg><span className="brand-word">michibiki</span><span className="brand-dot">•</span></button><div className="nav-actions"><button className="nav-button nav-profile" onClick={() => go('profile')}>あなたの条件 <span>→</span></button><button className="nav-button nav-history" onClick={() => go('history')}>履歴 <span>→</span></button><button className="nav-button" onClick={() => go('plan')}>旅をつくる <span>→</span></button><button className="avatar" onClick={() => go('profile')} aria-label="あなたのプロフィール"><img src={profile.avatar} alt="" /></button></div></nav>
+    <nav aria-label="メインナビゲーション"><button className="brand" onClick={() => go('home')} aria-label="michibiki のホームへ"><svg className="brand-mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="2" y="2" width="30" height="30" rx="10" fill="#e8f7ff"/><path d="M9 10.5c3.8-3.1 10.5-2.9 13.5.7 3 3.7.8 8.1-2.3 9.8-3.2 1.7-6.7.2-7.1 4.4" fill="none" stroke="#4d85b3" strokeWidth="3" strokeLinecap="round"/><circle cx="13" cy="25" r="3.5" fill="#ef8db3"/></svg><span className="brand-word">michibiki</span><span className="brand-dot">•</span></button><div className="nav-actions"><button className="nav-button nav-profile" onClick={() => go('profile')}>あなたの条件 <span>→</span></button><button className="nav-button nav-history" onClick={() => go('history')}>履歴 <span>→</span></button><button className="nav-button" onClick={() => go('plan')}>旅をつくる <span>→</span></button><button className="avatar" onClick={() => go('profile')} aria-label="あなたのプロフィール"><img src={profileAvatarUrl || defaultAvatar} alt="" /></button></div></nav>
     <div className="page-shell" key={page}>
     {page === 'home' && <Landing onStart={() => go('plan')} />}
     {page === 'plan' && <Plan trip={trip} setTrip={setTrip} profile={profile} setProfile={setProfile} onDispatch={dispatch} onProfile={() => go('profile')} busy={loading} />}
-    {page === 'profile' && <Profile profile={profile} setProfile={setProfile} mediaState={mediaState} onPlan={() => go('plan')} />}
+    {page === 'profile' && <Profile profile={profile} setProfile={setProfile} mediaState={mediaState} profileAvatarUrl={profileAvatarUrl} onRefreshAvatar={refreshProfileAvatarUrl} onPlan={() => go('plan')} />}
     {page === 'history' && <History onOpen={id => { localStorage.setItem('michibiki-last-mission', id); go('results'); restore() }} onPlan={() => go('plan')} />}
     {page === 'map' && !result && <LiveTrip page={page} trip={displayTrip} profile={displayProfile} avatars={profile.twinAvatars} result={null} loading={loading} error={error} started={started} onNewTrip={() => go('plan')} onRestore={restore} />}
     {page === 'map' && result && <Explore trip={displayTrip} profile={displayProfile} travelers={travelers} result={result} loading={loading} error={error} started={started} onRestore={restore} onDetail={setDetailAgent} onEdit={() => go('plan')} onResults={() => go('results')} />}
@@ -153,7 +167,7 @@ function Plan({ trip, setTrip, profile, setProfile, onDispatch, onProfile, busy 
 return <section className="plan-page" id="content"><div className="plan-progress"><span className="active">1　旅のこと</span><i /><span>2　ガイドが体験</span><i /><span>3　体験を受け取る</span></div><div className="plan-layout"><div className="plan-copy"><p className="eyebrow">あなたの次の旅</p><h1>今回の旅を、<br /><em>教えてください。</em></h1><p>行き先と、そこでしてみたいことを教えてください。あなたの移動条件を知っている旅のガイドたちが、どこを確かめるか考えます。</p><div className="profile-applied"><span>✓</span><p><b>あなたの移動条件を受け取っています</b><small>{profile.home}から出発 / 車いす幅 {profile.width}cm / 段差 {profile.step}cmまで</small></p><button type="button" onClick={onProfile}>見直す</button></div><div className="guide-roles"><span>行きたい場所を見る相棒</span><span>移動のしやすさを見る相棒</span><span>休憩場所を見る相棒</span></div></div><form className="trip-form" onSubmit={event => { event.preventDefault(); onDispatch() }}><h2>この旅で、楽しみにしていることは？</h2><label>行き先<input placeholder="例：東京・秋葉原など、行きたいエリア" value={trip.destination} onChange={event => update('destination', event.target.value)} required /></label><div className="form-row"><label>行く日<input value={trip.date} onChange={event => update('date', event.target.value)} required /></label><label>滞在時間<input value={trip.time} onChange={event => update('time', event.target.value)} required /></label></div><div className="input-method" role="group" aria-label="希望の入力方法"><button type="button" aria-pressed={inputMethod === 'text'} onClick={() => setInputMethod('text')}>文字で伝える</button><button type="button" aria-pressed={inputMethod === 'voice'} onClick={() => setInputMethod('voice')}>声で相談する</button></div>{inputMethod === 'voice' && <VoiceConsultation trip={trip} profile={profile} onUse={useConsultation} />}<label>してみたいこと<textarea placeholder="例：乃木坂46のMVに登場した東京のロケ地を巡りたい。近くのカフェでアクスタの写真も撮りたい。" value={trip.wish} onChange={event => update('wish', event.target.value)} required /></label><TwinFleet count={trip.twin_count} onChange={count => update('twin_count', count)} avatars={profile.twinAvatars} disabled={busy} /><p className="form-note">入力後、{profile.home}から旅のガイドたちが出発し、「通れる・過ごせる・行きたい」をそれぞれの場所で確かめます。</p><button className="journey-button dispatch" type="submit"><span>旅のガイドに、この旅を託す</span><i>→</i></button></form></div></section>
 }
 
-function Profile({ profile, setProfile, onPlan, mediaState }) {
+function Profile({ profile, setProfile, onPlan, mediaState, profileAvatarUrl, onRefreshAvatar }) {
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
   const update = (key, value) => { setProfile({ ...profile, [key]: value }); setSaved(false) }
@@ -166,7 +180,7 @@ function Profile({ profile, setProfile, onPlan, mediaState }) {
       <p>ここで伝えたことを、旅のガイドが持って現地へ向かいます。<br />毎回入力しなくていい、あなたのための旅の下準備です。</p>
     </header>
     <div className="profile-layout">
-      <aside className="profile-side"><div className="profile-photo"><img src={profile.avatar} alt="プロフィール画像" /></div><AvatarSetup profile={profile} setProfile={setProfile} mediaState={mediaState} /><h2>旅のガイドが<br />受け取ること</h2><p>「入れるか」だけでなく、どんな一日なら心地よく過ごせるかを確かめます。</p><ul><li>車いすの幅と越えられる段差</li><li>疲れずに移動できる時間</li><li>先に確認しておきたい場所</li></ul></aside>
+      <aside className="profile-side"><div className="profile-photo"><img src={profileAvatarUrl || defaultAvatar} alt="プロフィール画像" /></div><AvatarSetup profile={profile} setProfile={setProfile} mediaState={mediaState} onRefreshAvatar={onRefreshAvatar} /><h2>旅のガイドが<br />受け取ること</h2><p>「入れるか」だけでなく、どんな一日なら心地よく過ごせるかを確かめます。</p><ul><li>車いすの幅と越えられる段差</li><li>疲れずに移動できる時間</li><li>先に確認しておきたい場所</li></ul></aside>
       <form className="profile-form" onSubmit={event => { event.preventDefault(); save() }}>
         <div className="profile-form-head"><div><p className="eyebrow">BASIC CONDITIONS</p><h2>移動について</h2></div><span>必須ではありません。分かる範囲で大丈夫です。</span></div>
         <div className="profile-grid">
