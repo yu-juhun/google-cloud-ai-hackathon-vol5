@@ -262,7 +262,7 @@ resource "google_cloud_run_v2_service" "backend" {
       image = var.services_image
       ports { container_port = 8080 }
       resources {
-        limits   = { cpu = "1", memory = "512Mi" }
+        limits = { cpu = "1", memory = "512Mi" }
         # Analysis now continues after POST returns.
         cpu_idle = false
       }
