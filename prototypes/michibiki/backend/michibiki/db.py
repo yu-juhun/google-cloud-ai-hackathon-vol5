@@ -34,6 +34,7 @@ profiles = Table(
     Column("conditions", json_type, nullable=False),
     Column("version", Integer, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("avatar_object_name", String),
 )
 missions = Table(
     "missions",
@@ -80,13 +81,21 @@ itineraries = Table(
     UniqueConstraint("mission_id", "version"),
 )
 avatar_sets = Table(
-    "avatar_sets",
-    metadata,
+    "avatar_sets", metadata,
     Column("id", String(36), primary_key=True),
     Column("client_hash", String(64), nullable=False),
-    Column("provider_task_id", String, nullable=False),
+    Column("provider_task_ids", json_type, nullable=False),
     Column("status", String, nullable=False),
-    Column("assets", json_type),
+    Column("version", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+avatar_pool = Table(
+    "avatar_pool", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("client_hash", String(64), nullable=False),
+    Column("template_id", String, nullable=False),
+    Column("object_name", String, nullable=False),
+    Column("version", Integer, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 consultations = Table(
@@ -171,12 +180,19 @@ def migrate(db=None):
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 4)).first():
                 video_jobs.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=4))
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 5)).first():
+                from sqlalchemy import text
+
+                avatar_pool.create(conn, checkfirst=True)
+                conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_object_name VARCHAR"))
+                conn.execute(insert(migrations).values(version=5))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
         conn.execute(insert(migrations).values(version=2))
         conn.execute(insert(migrations).values(version=3))
         conn.execute(insert(migrations).values(version=4))
+        conn.execute(insert(migrations).values(version=5))
 
 
 def reserve_image_request(models):
@@ -429,14 +445,9 @@ def is_itinerary_saved(mission_id):
         )
 
 
-def create_avatar_set(client_hash, provider_task_id):
-    record = dict(
-        id=str(uuid4()),
-        client_hash=client_hash,
-        provider_task_id=provider_task_id,
-        status="generating",
-        created_at=now(),
-    )
+def create_avatar_set(client_hash, provider_task_ids, version):
+    record = dict(id=str(uuid4()), client_hash=client_hash, provider_task_ids=provider_task_ids,
+                  status="generating", version=version, created_at=now())
     with engine().begin() as conn:
         conn.execute(insert(avatar_sets).values(**record))
     return record
@@ -457,13 +468,80 @@ def get_avatar_set(set_id, client_hash):
     return dict(record) if record else None
 
 
-def update_avatar_set(set_id, status, assets=None):
+def update_avatar_set(set_id, status):
     with engine().begin() as conn:
-        conn.execute(
-            update(avatar_sets)
-            .where(avatar_sets.c.id == set_id)
-            .values(status=status, assets=assets)
+        conn.execute(update(avatar_sets).where(avatar_sets.c.id == set_id).values(status=status))
+
+
+def get_current_avatar_version(client_hash):
+    with engine().connect() as conn:
+        version = conn.execute(
+            select(avatar_pool.c.version).where(avatar_pool.c.client_hash == client_hash)
+            .order_by(avatar_pool.c.version.desc()).limit(1)
+        ).scalar()
+    return version or 1
+
+
+def get_used_template_ids(client_hash, version):
+    with engine().connect() as conn:
+        rows = conn.execute(
+            select(avatar_pool.c.template_id).where(
+                avatar_pool.c.client_hash == client_hash, avatar_pool.c.version == version,
+            )
+        ).scalars().all()
+    return set(rows)
+
+
+def add_avatar_pool_entries(client_hash, version, entries):
+    with engine().begin() as conn:
+        for entry in entries:
+            conn.execute(insert(avatar_pool).values(
+                id=str(uuid4()), client_hash=client_hash, version=version,
+                template_id=entry["template_id"], object_name=entry["object_name"], created_at=now(),
+            ))
+
+
+def get_avatar_pool(client_hash, version=None):
+    version = version if version is not None else get_current_avatar_version(client_hash)
+    with engine().connect() as conn:
+        rows = conn.execute(
+            select(avatar_pool).where(
+                avatar_pool.c.client_hash == client_hash, avatar_pool.c.version == version,
+            ).order_by(avatar_pool.c.created_at)
+        ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def delete_avatar_pool_version(client_hash, version):
+    with engine().begin() as conn:
+        conn.execute(delete(avatar_pool).where(
+            avatar_pool.c.client_hash == client_hash, avatar_pool.c.version == version,
+        ))
+
+
+def set_profile_avatar(owner_id, object_name):
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    database = engine()
+    upsert = pg_insert if database.dialect.name == "postgresql" else sqlite_insert
+    statement = (
+        upsert(profiles)
+        .values(owner_id=owner_id, conditions={}, version=1, updated_at=now(), avatar_object_name=object_name)
+        .on_conflict_do_update(
+            index_elements=[profiles.c.owner_id],
+            set_={"avatar_object_name": object_name, "updated_at": now()},
         )
+    )
+    with database.begin() as conn:
+        conn.execute(statement)
+
+
+def get_profile_avatar(owner_id):
+    with engine().connect() as conn:
+        return conn.execute(
+            select(profiles.c.avatar_object_name).where(profiles.c.owner_id == owner_id)
+        ).scalar()
 
 
 def create_video_job(client_hash, report_id, feedback, style, tone):

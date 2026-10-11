@@ -52,7 +52,7 @@ def test_migration_and_idempotency(database):
     with database.connect() as conn:
         assert conn.execute(select(func.count()).select_from(db.missions)).scalar() == 1
         assert (
-            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 4
+            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 5
         )
 
 
@@ -158,3 +158,50 @@ def test_migrate_demo_owner_data_keeps_existing_target_profile(database):
 def test_migrate_demo_owner_data_is_a_noop_when_nothing_to_migrate(database):
     db.migrate_demo_owner_data("real-client-hash")  # must not raise
     assert db.get_profile("real-client-hash") is None
+
+
+def test_avatar_pool_tracks_used_styles_per_version(database):
+    assert db.get_current_avatar_version("client-1") == 1
+    assert db.get_used_template_ids("client-1", 1) == set()
+    db.add_avatar_pool_entries("client-1", 1, [
+        {"template_id": "female_manga_mood", "object_name": "avatars/a/female_manga_mood"},
+        {"template_id": "male_cool_mood", "object_name": "avatars/a/male_cool_mood"},
+    ])
+    assert db.get_used_template_ids("client-1", 1) == {"female_manga_mood", "male_cool_mood"}
+    assert db.get_current_avatar_version("client-1") == 1
+    pool = db.get_avatar_pool("client-1")
+    assert len(pool) == 2
+    assert db.get_used_template_ids("other-client", 1) == set()
+
+
+def test_avatar_pool_wraparound_to_a_new_version(database):
+    db.add_avatar_pool_entries("client-1", 1, [
+        {"template_id": "female_manga_mood", "object_name": "avatars/a/female_manga_mood"},
+    ])
+    db.delete_avatar_pool_version("client-1", 1)
+    db.add_avatar_pool_entries("client-1", 2, [
+        {"template_id": "female_manga_mood", "object_name": "avatars/b/female_manga_mood"},
+    ])
+    assert db.get_current_avatar_version("client-1") == 2
+    assert db.get_used_template_ids("client-1", 1) == set()  # version 1 was deleted
+    assert db.get_used_template_ids("client-1", 2) == {"female_manga_mood"}
+    assert len(db.get_avatar_pool("client-1")) == 1  # only the current version
+
+
+def test_profile_avatar_selection_round_trips_and_upserts_a_missing_profile(database):
+    assert db.get_profile_avatar("client-2") is None
+    db.set_profile_avatar("client-2", "avatars/x/female_manga_mood")
+    assert db.get_profile_avatar("client-2") == "avatars/x/female_manga_mood"
+    db.set_profile_avatar("client-2", "avatars/x/male_cool_mood")
+    assert db.get_profile_avatar("client-2") == "avatars/x/male_cool_mood"
+
+
+def test_create_and_update_avatar_set_with_version(database):
+    tasks = [{"template_id": "female_manga_mood", "task_id": "task-1"}]
+    record = db.create_avatar_set("client-3", tasks, version=1)
+    assert record["status"] == "generating"
+    assert record["version"] == 1
+    assert record["provider_task_ids"] == tasks
+    db.update_avatar_set(record["id"], "ready")
+    fetched = db.get_avatar_set(record["id"], "client-3")
+    assert fetched["status"] == "ready"
