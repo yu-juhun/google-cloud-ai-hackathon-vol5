@@ -4,7 +4,9 @@ import { createAudioPlayback } from './persona/audio/audioPlayback'
 import { startMicCapture, rmsVolume } from './persona/audio/micCapture'
 import './voice-consultation.css'
 
-export default function VoiceConsultation({ trip, profile, onUse, purpose = 'trip_wish' }) {
+const defaultAvatar = '/images/agent-hinata.png'
+
+export default function VoiceConsultation({ trip, profile, profileAvatarUrl, onUse, purpose = 'trip_wish' }) {
   const [state, setState] = useState('idle')
   const [voice, setVoice] = useState('Kore')
   const [mouth, setMouth] = useState(false)
@@ -73,7 +75,7 @@ export default function VoiceConsultation({ trip, profile, onUse, purpose = 'tri
   }
   const wish = result?.attributes?.filter(a => a.domain === 'purpose' && a.confidence !== 'low').map(a => a.description).join('。') || result?.raw_summary || ''
   return <section className="voice-consultation" aria-label="声で旅の相談">
-    <div className="voice-avatar"><img src={mouth && profile.mouthOpen ? profile.mouthOpen : profile.avatar} alt="あなたの相談アバター" /><span>{state === 'talking' ? '相談中' : '旅の相談室'}</span></div>
+    <div className="voice-avatar"><img src={profileAvatarUrl || defaultAvatar} alt="あなたの相談アバター" /><span>{state === 'talking' ? '相談中' : '旅の相談室'}</span></div>
     <h3>まだ言葉になっていない旅も、話してみよう。</h3><p>行きたい場所、推しのこと、気がかりなこと。会話から希望を一緒に整理します。</p>
     <fieldset className="voice-choice"><legend>どんな声で相談する？</legend><div>{[['Kore', 'しっかりした声', '頼れる雰囲気'], ['Puck', '明るい声', '軽やかな雰囲気'], ['Charon', '説明向きの声', 'じっくり相談したいときに'], ['Leda', '若々しい声', '親しみやすい雰囲気']].map(([id, title, description]) => <label key={id} className={voice === id ? 'selected' : ''}><input type="radio" name="consultation-voice" value={id} checked={voice === id} disabled={!['idle','done'].includes(state)} onChange={() => setVoice(id)} /><span><b>{title}</b><span>{description}</span></span></label>)}</div></fieldset>
     <div className="voice-actions"><button type="button" onClick={start} disabled={!['idle','done'].includes(state)}>{state === 'connecting' ? 'つないでいます…' : 'マイクで相談をはじめる'}</button>{state === 'talking' && <button type="button" onClick={finish}>話した内容をまとめる</button>}</div>

@@ -74,6 +74,59 @@ async def get_profile_endpoint(x_michibiki_client: str = Header()):
     return conditions if conditions is not None else Profile().model_dump()
 
 
+# Holds strong references to in-flight background mission tasks so they are
+# never garbage-collected mid-run (asyncio only keeps a weak reference to a
+# bare create_task() result); each task removes itself once done.
+_background_missions = set()
+
+
+async def _schedule_mission(coro):
+    """Fire-and-forget by default. Tests monkeypatch this to `await coro`
+    instead, so a mission's background work finishes deterministically
+    before the test's POST call returns, instead of racing the test's own
+    assertions against an unscheduled asyncio task."""
+    task = asyncio.create_task(coro)
+    _background_missions.add(task)
+    task.add_done_callback(_background_missions.discard)
+
+
+async def _run_mission(mission_id, owner_id, request, started):
+    """Runs the actual (slow: tens of seconds to minutes) mission analysis in
+    the background, after create_mission has already responded. Moved out of
+    the request/response cycle because a single request held open for that
+    long is exactly the kind of long-idle connection some clients (observed:
+    Safari) silently drop mid-flight -- the backend was finishing and saving
+    the result regardless, but the client had no way to find out. Polling
+    GET /api/missions/{id} (short-lived requests) replaces waiting on this
+    one connection's response."""
+    try:
+        async with asyncio.timeout(840):
+            result = await rpc("orchestrator", request.model_dump())
+            own_avatars = await asyncio.to_thread(
+                db.avatar_object_names_owned_by, owner_id, request.avatar_object_names
+            )
+            await experience_images.generate(
+                result,
+                mission_id,
+                avatar_object_names=own_avatars,
+                budget=min(300, max(1, 835 - (time.monotonic() - started))),
+            )
+            result["timings"]["request_ms"] = round((time.monotonic() - started) * 1000)
+            transient_places = result["places"]
+            result["places"] = [{"place_id": p["place_id"]} for p in transient_places]
+            await asyncio.to_thread(db.finish_mission, mission_id, result)
+            logger.info(
+                "mission_completed id=%s elapsed_ms=%s",
+                mission_id,
+                result["timings"]["request_ms"],
+            )
+    except TimeoutError:
+        await asyncio.to_thread(db.fail_mission, mission_id, "timeout")
+    except Exception:
+        logger.exception("mission_failed id=%s", mission_id)
+        await asyncio.to_thread(db.fail_mission, mission_id, "execution_failed")
+
+
 @app.post("/api/missions")
 async def create_mission(request: MissionInput, x_michibiki_client: str = Header()):
     require_backend()
@@ -94,46 +147,8 @@ async def create_mission(request: MissionInput, x_michibiki_client: str = Header
                 "message": "この依頼は実行中または終了済みです。二重実行はしません。",
             },
         )
-    try:
-        async with asyncio.timeout(840):
-            result = await rpc("orchestrator", request.model_dump())
-            await experience_images.generate(
-                result,
-                mission["id"],
-                budget=min(300, max(1, 835 - (time.monotonic() - started))),
-            )
-            result["timings"]["request_ms"] = round((time.monotonic() - started) * 1000)
-            transient_places = result["places"]
-            result["places"] = [{"place_id": p["place_id"]} for p in transient_places]
-            saved = await asyncio.to_thread(db.finish_mission, mission["id"], result)
-            response = deepcopy(saved)
-            response["places"] = transient_places
-            response["timings"]["request_ms"] = round(
-                (time.monotonic() - started) * 1000
-            )
-            response["saved"] = False
-            await asyncio.to_thread(experience_images.attach_urls, response)
-            logger.info(
-                "mission_completed id=%s elapsed_ms=%s",
-                mission["id"],
-                result["timings"]["request_ms"],
-            )
-            return response
-    except TimeoutError:
-        await asyncio.to_thread(db.fail_mission, mission["id"], "timeout")
-        raise HTTPException(
-            504, {"mission_id": mission["id"], "message": "処理期限を超えました。"}
-        )
-    except Exception:
-        logger.exception("mission_failed id=%s", mission["id"])
-        await asyncio.to_thread(db.fail_mission, mission["id"], "execution_failed")
-        raise HTTPException(
-            502,
-            {
-                "mission_id": mission["id"],
-                "message": "旅の分析を完了できませんでした。時間をおいて、もう一度お試しください。",
-            },
-        )
+    await _schedule_mission(_run_mission(mission["id"], owner_id, request, started))
+    return {"mission_id": mission["id"], "status": mission["status"]}
 
 
 async def hydrate(result):

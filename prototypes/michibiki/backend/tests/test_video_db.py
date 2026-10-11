@@ -22,9 +22,9 @@ def test_find_latest_ready_avatar_set_returns_none_when_absent(database):
 
 
 def test_find_latest_ready_avatar_set_skips_non_ready(database):
-    record = db.create_avatar_set("hash-1", "task-1")
+    record = db.create_avatar_set("hash-1", [{"task_id": "task-1"}], version=1)
     assert db.find_latest_ready_avatar_set("hash-1") is None
-    db.update_avatar_set(record["id"], "ready", assets={"assets": [{"object_name": "x.png"}]})
+    db.update_avatar_set(record["id"], "ready")
     found = db.find_latest_ready_avatar_set("hash-1")
     assert found["id"] == record["id"]
 

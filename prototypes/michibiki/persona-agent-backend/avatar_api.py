@@ -4,6 +4,7 @@ import base64
 import io
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -27,8 +28,24 @@ class AvatarPhoto(BaseModel):
     consent: bool
 
 
+class AvatarBatchPhoto(BaseModel):
+    photo: str = Field(max_length=9_000_000)
+    template_ids: list[str] = Field(min_length=1, max_length=10)
+    consent: bool
+
+
 class AvatarResult(BaseModel):
     task_id: str = Field(min_length=1, max_length=500)
+    set_id: UUID
+
+
+class AvatarBatchTask(BaseModel):
+    template_id: str
+    task_id: str
+
+
+class AvatarBatchResult(BaseModel):
+    tasks: list[AvatarBatchTask]
     set_id: UUID
 
 
@@ -60,6 +77,39 @@ def submit(photo):
     return {"task_id": start_avatar_task(raw, mime, photo.template_id, 11)}
 
 
+def submit_batch(photo):
+    if not photo.consent:
+        raise HTTPException(400, "写真をYouCamへ送信することへの確認が必要です。")
+    if not capabilities()["avatar_configured"]:
+        raise HTTPException(503, "YouCamのAPIキー・シークレットが未設定です。")
+    valid_ids = flatten_template_ids(load_avatar_template_catalog())
+    for template_id in photo.template_ids:
+        if template_id not in valid_ids:
+            raise HTTPException(400, "スタイルを選び直してください。")
+    try:
+        raw = base64.b64decode(photo.photo, validate=True)
+        if len(raw) > 6_000_000:
+            raise ValueError("Photo too large")
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format not in ("JPEG", "PNG") or max(image.size) > 4096:
+                raise ValueError("Unsupported photo")
+            mime = Image.MIME[image.format]
+            image.verify()
+    except Exception:
+        raise HTTPException(400, "6MB以下・長辺4096px以下のJPEG/PNG写真を選んでください。")
+    # Cap concurrency at 3 — YouCam's real limit is unverified; this is a
+    # conservative default (see this plan's Global Constraints).
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        task_ids = list(pool.map(
+            lambda template_id: start_avatar_task(raw, mime, template_id, 1),
+            photo.template_ids,
+        ))
+    return {"tasks": [
+        {"template_id": template_id, "task_id": task_id}
+        for template_id, task_id in zip(photo.template_ids, task_ids)
+    ]}
+
+
 @router.post("/avatar-jobs")
 async def create_avatar_job(photo: AvatarPhoto):
     try:
@@ -68,6 +118,17 @@ async def create_avatar_job(photo: AvatarPhoto):
         raise
     except Exception:
         logger.warning("YouCam submission failed", exc_info=False)
+        raise HTTPException(502, "YouCamへの画像生成依頼に失敗しました。")
+
+
+@router.post("/avatar-jobs-batch")
+async def create_avatar_job_batch(photo: AvatarBatchPhoto):
+    try:
+        return await asyncio.to_thread(submit_batch, photo)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.warning("YouCam batch submission failed", exc_info=False)
         raise HTTPException(502, "YouCamへの画像生成依頼に失敗しました。")
 
 
@@ -115,6 +176,50 @@ def collect(request):
 async def avatar_result(request: AvatarResult):
     try:
         return await asyncio.to_thread(collect, request)
+    except Exception as exc:
+        logger.warning("Avatar batch collection failed error_type=%s", type(exc).__name__, exc_info=False)
+        raise HTTPException(502, "生成画像を取得・保存できませんでした。再確認してください。")
+
+
+def collect_batch(request):
+    bucket = storage.Client().bucket(os.environ["AVATAR_BUCKET"])
+    ready = []
+    pending = False
+    for task in request.tasks:
+        status, outputs = avatar_task_status(task.task_id)
+        if status == "error":
+            logger.warning(
+                "YouCam task reported error template_id=%s task_id=%s", task.template_id, task.task_id
+            )
+            continue
+        if status != "success":
+            pending = True
+            continue
+        if not outputs:
+            continue
+        try:
+            raw, mime = download_avatar(outputs[0]["url"])
+            with Image.open(io.BytesIO(raw)) as image:
+                image.verify()
+        except Exception:
+            logger.warning("Skipping one corrupt avatar download for template_id=%s", task.template_id)
+            continue
+        object_name = f"avatars/{request.set_id}/{task.template_id}"
+        blob = bucket.blob(object_name)
+        blob.cache_control = "private, max-age=3600"
+        blob.upload_from_string(raw, content_type=mime)
+        ready.append({"template_id": task.template_id, "object_name": object_name, "mime_type": mime})
+    if pending:
+        return {"status": "generating", "done": len(ready), "total": len(request.tasks)}
+    if not ready:
+        return {"status": "failed"}
+    return {"status": "ready", "avatars": ready}
+
+
+@router.post("/avatar-results-batch")
+async def avatar_result_batch(request: AvatarBatchResult):
+    try:
+        return await asyncio.to_thread(collect_batch, request)
     except Exception as exc:
         logger.warning("Avatar batch collection failed error_type=%s", type(exc).__name__, exc_info=False)
         raise HTTPException(502, "生成画像を取得・保存できませんでした。再確認してください。")

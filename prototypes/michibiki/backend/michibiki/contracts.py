@@ -29,6 +29,12 @@ class MissionInput(BaseModel):
     profile: Profile
     trip: Trip
     idempotency_key: str = Field(min_length=8, max_length=100)
+    # The caller's own generated avatars, by travel-companion slot (1st entry
+    # personalizes the twin with ordinal 1, etc). Server-side, only entries
+    # that are actually in the caller's own avatar_pool are ever used --
+    # see create_mission's ownership check; this is otherwise a client-
+    # controlled GCS object path.
+    avatar_object_names: list[str] = Field(default_factory=list, max_length=10)
 
 
 class Assignment(BaseModel):
