@@ -1,8 +1,21 @@
 from copy import deepcopy
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import (
+    JSON,
+    Column,
+    DateTime,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+    func,
+    insert,
+    select,
+)
 
 from michibiki import db
 from michibiki.contracts import MissionInput, Profile
@@ -205,3 +218,49 @@ def test_create_and_update_avatar_set_with_version(database):
     db.update_avatar_set(record["id"], "ready")
     fetched = db.get_avatar_set(record["id"], "client-3")
     assert fetched["status"] == "ready"
+
+
+def test_migration_5_upgrades_a_pre_existing_version_4_database(tmp_path, monkeypatch):
+    """Seeds a fresh sqlite file at the pre-version-5 shape (schema_migrations with
+    rows 1-4, and a profiles table WITHOUT avatar_object_name — no avatar_pool table)
+    and confirms db.migrate() drives the actual UPGRADE branch: ALTER TABLE profiles
+    ADD COLUMN avatar_object_name + avatar_pool.create(), not the fresh-create path
+    every other fixture exercises."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy.db'}")
+    monkeypatch.setattr(db, "engine", lambda: engine)
+
+    legacy_metadata = MetaData()
+    legacy_migrations = Table(
+        "schema_migrations", legacy_metadata, Column("version", Integer, primary_key=True)
+    )
+    legacy_profiles = Table(
+        "profiles",
+        legacy_metadata,
+        Column("owner_id", String, primary_key=True),
+        Column("conditions", JSON(), nullable=False),
+        Column("version", Integer, nullable=False),
+        Column("updated_at", DateTime(timezone=True), nullable=False),
+    )
+    with engine.begin() as conn:
+        legacy_metadata.create_all(conn)
+        conn.execute(insert(legacy_profiles).values(
+            owner_id="legacy-owner", conditions={}, version=1, updated_at=datetime.now(UTC),
+        ))
+        for v in (1, 2, 3, 4):
+            conn.execute(insert(legacy_migrations).values(version=v))
+
+    db.migrate(engine)
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 5
+
+    db.add_avatar_pool_entries("client-upgrade", 1, [
+        {"template_id": "female_manga_mood", "object_name": "avatars/u/female_manga_mood"},
+    ])
+    assert db.get_used_template_ids("client-upgrade", 1) == {"female_manga_mood"}
+
+    assert db.get_profile_avatar("legacy-owner") is None
+    db.set_profile_avatar("legacy-owner", "avatars/u/female_manga_mood")
+    assert db.get_profile_avatar("legacy-owner") == "avatars/u/female_manga_mood"
+
+    engine.dispose()
