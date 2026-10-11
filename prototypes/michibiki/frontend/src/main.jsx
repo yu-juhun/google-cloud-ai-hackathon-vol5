@@ -80,6 +80,16 @@ function App() {
     }
   }, [mediaState.status])
   useEffect(() => { setTripSaved(false) }, [result?.mission_id])
+  useEffect(() => {
+    if (page !== 'plan') return
+    let active = true
+    api('/api/avatars/pool').then(data => {
+      if (!active) return
+      const shuffled = [...data.avatars].sort(() => Math.random() - 0.5)
+      setTripAvatars(shuffled.slice(0, 10).map(a => a.url))
+    }).catch(() => active && setTripAvatars([]))
+    return () => { active = false }
+  }, [page])
   const displayTrip = liveInput?.trip || trip
   const displayProfile = liveInput?.profile || profile
   const travelers = travelersFor(result, displayTrip.twin_count || 3, tripAvatars)
@@ -103,11 +113,8 @@ function App() {
     inFlight.current = true
     const input = { trip: { ...trip }, profile: serverProfile(profile), idempotency_key: crypto.randomUUID() }
     const start = Date.now()
-    try {
-      const poolData = await api('/api/avatars/pool')
-      const shuffled = [...poolData.avatars].sort(() => Math.random() - 0.5)
-      setTripAvatars(shuffled.slice(0, 10).map(a => a.url))
-    } catch { setTripAvatars([]) }
+    // tripAvatars is already drawn when the Plan page loaded (see the effect above),
+    // so what the traveler count selector previewed is exactly what the live map shows.
     setLiveInput(input); setResult(null); setError(''); setLoading(true); setStarted(start); go('map')
     try { const data = await api('/api/missions', { method: 'POST', body: input }); data.timings.browser_ms = Date.now() - start; setResult(data); localStorage.setItem('michibiki-last-mission', data.mission_id) }
     catch (err) { setError(err.message); if (err.missionId) localStorage.setItem('michibiki-last-mission', err.missionId) }
