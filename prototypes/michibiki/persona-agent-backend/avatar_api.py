@@ -4,6 +4,7 @@ import base64
 import io
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
@@ -24,6 +25,12 @@ Image.MAX_IMAGE_PIXELS = 20_000_000
 class AvatarPhoto(BaseModel):
     photo: str = Field(max_length=9_000_000)
     template_id: str = Field(max_length=100)
+    consent: bool
+
+
+class AvatarBatchPhoto(BaseModel):
+    photo: str = Field(max_length=9_000_000)
+    template_ids: list[str] = Field(min_length=1, max_length=10)
     consent: bool
 
 
@@ -60,6 +67,39 @@ def submit(photo):
     return {"task_id": start_avatar_task(raw, mime, photo.template_id, 11)}
 
 
+def submit_batch(photo):
+    if not photo.consent:
+        raise HTTPException(400, "写真をYouCamへ送信することへの確認が必要です。")
+    if not capabilities()["avatar_configured"]:
+        raise HTTPException(503, "YouCamのAPIキー・シークレットが未設定です。")
+    valid_ids = flatten_template_ids(load_avatar_template_catalog())
+    for template_id in photo.template_ids:
+        if template_id not in valid_ids:
+            raise HTTPException(400, "スタイルを選び直してください。")
+    try:
+        raw = base64.b64decode(photo.photo, validate=True)
+        if len(raw) > 6_000_000:
+            raise ValueError("Photo too large")
+        with Image.open(io.BytesIO(raw)) as image:
+            if image.format not in ("JPEG", "PNG") or max(image.size) > 4096:
+                raise ValueError("Unsupported photo")
+            mime = Image.MIME[image.format]
+            image.verify()
+    except Exception:
+        raise HTTPException(400, "6MB以下・長辺4096px以下のJPEG/PNG写真を選んでください。")
+    # Cap concurrency at 3 — YouCam's real limit is unverified; this is a
+    # conservative default (see this plan's Global Constraints).
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        task_ids = list(pool.map(
+            lambda template_id: start_avatar_task(raw, mime, template_id, 1),
+            photo.template_ids,
+        ))
+    return {"tasks": [
+        {"template_id": template_id, "task_id": task_id}
+        for template_id, task_id in zip(photo.template_ids, task_ids)
+    ]}
+
+
 @router.post("/avatar-jobs")
 async def create_avatar_job(photo: AvatarPhoto):
     try:
@@ -68,6 +108,17 @@ async def create_avatar_job(photo: AvatarPhoto):
         raise
     except Exception:
         logger.warning("YouCam submission failed", exc_info=False)
+        raise HTTPException(502, "YouCamへの画像生成依頼に失敗しました。")
+
+
+@router.post("/avatar-jobs-batch")
+async def create_avatar_job_batch(photo: AvatarBatchPhoto):
+    try:
+        return await asyncio.to_thread(submit_batch, photo)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.warning("YouCam batch submission failed", exc_info=False)
         raise HTTPException(502, "YouCamへの画像生成依頼に失敗しました。")
 
 
