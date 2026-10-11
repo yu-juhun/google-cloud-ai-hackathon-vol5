@@ -110,6 +110,30 @@ function App() {
     catch (err) { setError(err.message) }
     finally { setLoading(false) }
   }
+  // POST /api/missions holds one connection open for the whole analysis (up
+  // to several minutes) rather than returning immediately and letting the
+  // client poll -- so a dropped connection (Safari in particular drops long
+  // idle fetches) looks like total failure even though the backend keeps
+  // working and saves the result anyway. Recover by finding that same
+  // mission (it was just created, so it's the most recent one) and polling
+  // it instead of giving up.
+  const recoverAfterDrop = async () => {
+    try {
+      const list = await api('/api/missions')
+      const recent = list.missions?.[0]
+      if (!recent || Date.now() - new Date(recent.created_at).getTime() > 20 * 60 * 1000) return false
+      localStorage.setItem('michibiki-last-mission', recent.id)
+      for (let i = 0; i < 90; i++) {
+        await new Promise(r => setTimeout(r, 5000))
+        try {
+          const data = await api(`/api/missions/${encodeURIComponent(recent.id)}`)
+          if (data.itinerary) { setResult(data); setLiveInput(data.input); setError(''); return true }
+          if (data.status === 'failed') return false
+        } catch { /* keep polling through further transient network errors */ }
+      }
+    } catch { /* fall through to showing the original error */ }
+    return false
+  }
   const dispatch = async () => {
     if (inFlight.current || loading) return
     inFlight.current = true
@@ -122,7 +146,10 @@ function App() {
     // so what the traveler count selector previewed is exactly what the live map shows.
     setLiveInput(input); setResult(null); setError(''); setLoading(true); setStarted(start); go('map')
     try { const data = await api('/api/missions', { method: 'POST', body: input }); data.timings.browser_ms = Date.now() - start; setResult(data); localStorage.setItem('michibiki-last-mission', data.mission_id) }
-    catch (err) { setError(err.message); if (err.missionId) localStorage.setItem('michibiki-last-mission', err.missionId) }
+    catch (err) {
+      if (err.missionId) localStorage.setItem('michibiki-last-mission', err.missionId)
+      if (!(await recoverAfterDrop())) setError(err.message)
+    }
     finally { setLoading(false); inFlight.current = false }
   }
   useEffect(() => { if (['map', 'results'].includes(location.hash.slice(1)) && localStorage.getItem('michibiki-last-mission')) restore() }, [])
