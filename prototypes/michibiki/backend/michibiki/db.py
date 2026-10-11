@@ -176,6 +176,7 @@ def _ensure_avatar_pool_schema(conn):
     columns = {c["name"] for c in inspect(conn).get_columns("profiles")}
     if "avatar_object_name" not in columns:
         conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_object_name VARCHAR"))
+    archived = False
     if inspect(conn).has_table("avatar_sets"):
         columns = {c["name"] for c in inspect(conn).get_columns("avatar_sets")}
         if "provider_task_ids" not in columns:
@@ -183,7 +184,27 @@ def _ensure_avatar_pool_schema(conn):
                 raise RuntimeError("Legacy avatar archive already exists; manual reconciliation required")
             # Keep generated image pointers and completed old jobs recoverable.
             conn.execute(text("ALTER TABLE avatar_sets RENAME TO avatar_sets_legacy"))
+            archived = True
     avatar_sets.create(conn, checkfirst=True)
+    if archived:
+        legacy = Table("avatar_sets_legacy", MetaData(), autoload_with=conn)
+        rows = conn.execute(select(legacy).where(legacy.c.status == "ready")
+                            .order_by(legacy.c.created_at.desc())).mappings().all()
+        imported = set()
+        for row in rows:
+            owner = row["client_hash"]
+            if owner in imported:
+                continue
+            assets = row["assets"].get("assets", []) if isinstance(row["assets"], dict) else []
+            assets = [a for a in assets if isinstance(a, dict) and a.get("object_name")]
+            if not assets:
+                continue
+            imported.add(owner)
+            for index, asset in enumerate(assets):
+                conn.execute(insert(avatar_pool).values(id=str(uuid4()), client_hash=owner,
+                    template_id=f"legacy-{index}", object_name=asset["object_name"], version=1, created_at=now()))
+            conn.execute(update(profiles).where(profiles.c.owner_id == owner,
+                profiles.c.avatar_object_name.is_(None)).values(avatar_object_name=assets[0]["object_name"]))
 
 
 def migrate(db=None):
@@ -578,6 +599,12 @@ def get_avatar_set(set_id, client_hash):
             .mappings()
             .first()
         )
+        if not record and inspect(conn).has_table("avatar_sets_legacy"):
+            legacy = Table("avatar_sets_legacy", MetaData(), autoload_with=conn)
+            old = conn.execute(select(legacy).where(legacy.c.id == set_id,
+                legacy.c.client_hash == client_hash, legacy.c.status == "ready")).mappings().first()
+            if old:
+                return {**dict(old), "version": 1}
     return dict(record) if record else None
 
 

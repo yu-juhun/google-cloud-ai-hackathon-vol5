@@ -46,6 +46,10 @@ def test_existing_video_v5_keeps_movie_and_legacy_avatar(database):
     assert db.find_latest_ready_avatar_set("owner")["assets"]["assets"][0]["object_name"] == "avatars/old.png"
     assert db.find_latest_ready_avatar_set("other") is None
     assert inspect(database).has_table("avatar_sets_legacy")
+    assert db.get_avatar_set("old-avatar", "owner")["version"] == 1
+    assert db.get_avatar_set("old-avatar", "other") is None
+    assert db.get_profile_avatar("owner") == "avatars/old.png"
+    assert len(db.get_avatar_pool("owner")) == 1
     with database.connect() as conn:
         assert set(conn.execute(select(db.migrations.c.version)).scalars()) == set(range(1, 9))
     new = db.create_avatar_set("owner", [{"template_id": "new-style", "task_id": "new-task"}], 1)
