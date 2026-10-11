@@ -65,7 +65,7 @@ def test_migration_and_idempotency(database):
     with database.connect() as conn:
         assert conn.execute(select(func.count()).select_from(db.missions)).scalar() == 1
         assert (
-            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 5
+            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 6
         )
 
 
@@ -252,7 +252,7 @@ def test_migration_5_upgrades_a_pre_existing_version_4_database(tmp_path, monkey
     db.migrate(engine)
 
     with engine.connect() as conn:
-        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 5
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 6
 
     db.add_avatar_pool_entries("client-upgrade", 1, [
         {"template_id": "female_manga_mood", "object_name": "avatars/u/female_manga_mood"},
@@ -321,3 +321,51 @@ def test_migration_5_upgrades_avatar_sets_old_shape_to_new_shape(tmp_path, monke
     assert fetched["status"] == "generating"
 
     engine.dispose()
+
+
+def test_migration_6_upgrades_a_pre_existing_version_5_database(tmp_path, monkeypatch):
+    """Seeds a real pre-v6 database (profiles WITHOUT avatar_gender, migrations
+    1-5 applied) and confirms db.migrate() drives the ALTER TABLE profiles ADD
+    COLUMN avatar_gender upgrade branch."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'legacy_gender.db'}")
+    monkeypatch.setattr(db, "engine", lambda: engine)
+
+    legacy_metadata = MetaData()
+    legacy_migrations = Table(
+        "schema_migrations", legacy_metadata, Column("version", Integer, primary_key=True)
+    )
+    legacy_profiles = Table(
+        "profiles",
+        legacy_metadata,
+        Column("owner_id", String, primary_key=True),
+        Column("conditions", JSON(), nullable=False),
+        Column("version", Integer, nullable=False),
+        Column("updated_at", DateTime(timezone=True), nullable=False),
+        Column("avatar_object_name", String),
+    )
+    with engine.begin() as conn:
+        legacy_metadata.create_all(conn)
+        conn.execute(insert(legacy_profiles).values(
+            owner_id="legacy-owner-3", conditions={}, version=1, updated_at=datetime.now(UTC),
+        ))
+        for v in (1, 2, 3, 4, 5):
+            conn.execute(insert(legacy_migrations).values(version=v))
+
+    db.migrate(engine)
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 6
+
+    assert db.get_profile_avatar_gender("legacy-owner-3") is None
+    db.set_profile_avatar_gender("legacy-owner-3", "female")
+    assert db.get_profile_avatar_gender("legacy-owner-3") == "female"
+
+    engine.dispose()
+
+
+def test_profile_avatar_gender_roundtrip(database):
+    assert db.get_profile_avatar_gender("some-owner") is None
+    db.set_profile_avatar_gender("some-owner", "male")
+    assert db.get_profile_avatar_gender("some-owner") == "male"
+    db.set_profile_avatar_gender("some-owner", "female")
+    assert db.get_profile_avatar_gender("some-owner") == "female"

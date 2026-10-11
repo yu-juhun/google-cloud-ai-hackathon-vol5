@@ -35,6 +35,7 @@ profiles = Table(
     Column("version", Integer, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
     Column("avatar_object_name", String),
+    Column("avatar_gender", String),
 )
 missions = Table(
     "missions",
@@ -192,6 +193,11 @@ def migrate(db=None):
                 avatar_sets.drop(conn, checkfirst=True)
                 avatar_sets.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=5))
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 6)).first():
+                from sqlalchemy import text
+
+                conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_gender VARCHAR"))
+                conn.execute(insert(migrations).values(version=6))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
@@ -199,6 +205,7 @@ def migrate(db=None):
         conn.execute(insert(migrations).values(version=3))
         conn.execute(insert(migrations).values(version=4))
         conn.execute(insert(migrations).values(version=5))
+        conn.execute(insert(migrations).values(version=6))
 
 
 def reserve_image_request(models):
@@ -547,6 +554,31 @@ def get_profile_avatar(owner_id):
     with engine().connect() as conn:
         return conn.execute(
             select(profiles.c.avatar_object_name).where(profiles.c.owner_id == owner_id)
+        ).scalar()
+
+
+def set_profile_avatar_gender(owner_id, gender):
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    database = engine()
+    upsert = pg_insert if database.dialect.name == "postgresql" else sqlite_insert
+    statement = (
+        upsert(profiles)
+        .values(owner_id=owner_id, conditions={}, version=1, updated_at=now(), avatar_gender=gender)
+        .on_conflict_do_update(
+            index_elements=[profiles.c.owner_id],
+            set_={"avatar_gender": gender, "updated_at": now()},
+        )
+    )
+    with database.begin() as conn:
+        conn.execute(statement)
+
+
+def get_profile_avatar_gender(owner_id):
+    with engine().connect() as conn:
+        return conn.execute(
+            select(profiles.c.avatar_gender).where(profiles.c.owner_id == owner_id)
         ).scalar()
 
 

@@ -14,6 +14,7 @@ from google.auth.transport.requests import Request
 from google.cloud import storage
 from google.oauth2.id_token import fetch_id_token
 from pydantic import BaseModel, Field
+from typing import Literal
 
 from . import db
 
@@ -45,6 +46,10 @@ class AvatarPhoto(BaseModel):
     consent: bool
 
 
+class AvatarGenderSelection(BaseModel):
+    gender: Literal["male", "female"]
+
+
 @router.get("/avatar-templates")
 async def templates():
     return await persona_rpc("/avatar-templates")
@@ -53,6 +58,19 @@ async def templates():
 @router.get("/persona/capabilities")
 async def capabilities():
     return await persona_rpc("/capabilities")
+
+
+@router.get("/profile/avatar-gender")
+async def get_avatar_gender(x_michibiki_client: str = Header()):
+    owner = client_hash(x_michibiki_client)
+    return {"gender": await asyncio.to_thread(db.get_profile_avatar_gender, owner)}
+
+
+@router.put("/profile/avatar-gender")
+async def put_avatar_gender(selection: AvatarGenderSelection, x_michibiki_client: str = Header()):
+    owner = client_hash(x_michibiki_client)
+    await asyncio.to_thread(db.set_profile_avatar_gender, owner, selection.gender)
+    return {"gender": selection.gender}
 
 
 async def _delete_pool_blob(bucket, object_name):
@@ -66,7 +84,9 @@ async def _delete_pool_blob(bucket, object_name):
 async def create(photo: AvatarPhoto, x_michibiki_client: str = Header()):
     owner = client_hash(x_michibiki_client)
     catalog = await persona_rpc("/avatar-templates")
-    all_ids = {t["id"] for categories in catalog.values() for templates in categories.values() for t in templates}
+    gender = await asyncio.to_thread(db.get_profile_avatar_gender, owner)
+    genders = catalog if gender is None else {gender: catalog.get(gender, {})}
+    all_ids = {t["id"] for categories in genders.values() for templates in categories.values() for t in templates}
     version = await asyncio.to_thread(db.get_current_avatar_version, owner)
     used = await asyncio.to_thread(db.get_used_template_ids, owner, version)
     unused = list(all_ids - used)

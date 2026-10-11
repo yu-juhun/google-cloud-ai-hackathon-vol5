@@ -46,6 +46,7 @@ export default function AvatarSetup({ profile, setProfile, mediaState, onRefresh
   const [error, setError] = useState('')
   const [configured, setConfigured] = useState(null)
   const [poolVersion, setPoolVersion] = useState(0)
+  const [gender, setGender] = useState(null)
   const { pool, reload } = usePool(`${poolVersion}-${mediaState.status}`)
   useEffect(() => {
     let active = true
@@ -53,6 +54,18 @@ export default function AvatarSetup({ profile, setProfile, mediaState, onRefresh
       .catch(err => active && setError(err.message))
     return () => { active = false }
   }, [])
+  useEffect(() => {
+    let active = true
+    api('/api/profile/avatar-gender').then(data => active && setGender(data.gender))
+      .catch(err => active && setError(err.message))
+    return () => { active = false }
+  }, [])
+  const selectGender = async value => {
+    try {
+      await api('/api/profile/avatar-gender', { method: 'PUT', body: { gender: value } })
+      setGender(value)
+    } catch (err) { setError(err.message) }
+  }
   const generating = submitting || mediaState.status === 'generating'
   const create = async () => {
     if (!photo || !consent || generating) return
@@ -83,6 +96,10 @@ export default function AvatarSetup({ profile, setProfile, mediaState, onRefresh
     } catch (err) { setError(err.message) }
   }
   return <section className="avatar-setup"><h3>ひとりのあなたから、探検隊を。</h3><p>あなたの写真から、ランダムなスタイルで旅の相棒のアイコンを作ります。生成するたびに新しいスタイルが追加されます。</p>
+    <div className="avatar-gender" role="radiogroup" aria-label="アバターのスタイルの性別"><span>スタイルの性別</span>
+      <button type="button" role="radio" aria-checked={gender === 'female'} className={gender === 'female' ? 'selected' : ''} disabled={generating} onClick={() => selectGender('female')}>女性的</button>
+      <button type="button" role="radio" aria-checked={gender === 'male'} className={gender === 'male' ? 'selected' : ''} disabled={generating} onClick={() => selectGender('male')}>男性的</button>
+    </div>
     <label className="avatar-file"><span>あなたの写真</span><span className="avatar-upload"><span aria-hidden="true">＋</span>{photo ? '写真を選び直す' : '写真を選ぶ'}<input type="file" accept="image/jpeg,image/png" disabled={generating} onChange={event => { setPhoto(event.target.files?.[0] || null); setError('') }} /></span><small>{photo ? photo.name : 'JPEG・PNG / 6MBまで'}</small></label>
     <label className="avatar-consent"><input type="checkbox" checked={consent} disabled={generating} onChange={event => setConsent(event.target.checked)} /><span>この写真をYouCamへ送信してアバターを生成することに同意します。</span></label>
     <button type="button" className="journey-button" disabled={!photo || !consent || generating || configured !== true} onClick={create}>{generating ? '探検隊を準備しています…' : 'あなたの探検隊をつくる →'}</button>

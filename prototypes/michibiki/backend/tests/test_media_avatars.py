@@ -226,3 +226,67 @@ def test_wraparound_tolerates_a_missing_blob_during_pool_cleanup(mock_rpc, mock_
     response = client.post("/api/avatars", json={"photo": "ZmFrZQ==", "consent": True}, headers=headers)
     assert response.status_code == 200
     assert db.get_avatar_pool(owner, 1) == []  # cleanup still completed despite the missing blob
+
+
+def _mixed_gender_catalog():
+    return {
+        "male": {"mood": [{"id": f"male_style_{i}", "title": f"Male {i}"} for i in range(12)]},
+        "female": {"mood": [{"id": f"female_style_{i}", "title": f"Female {i}"} for i in range(12)]},
+    }
+
+
+def test_get_avatar_gender_defaults_to_none(database):
+    token = "gender-get-default-" + "a" * 20
+    response = client.get("/api/profile/avatar-gender", headers={"X-Michibiki-Client": token})
+    assert response.status_code == 200
+    assert response.json()["gender"] is None
+
+
+def test_put_avatar_gender_persists_the_selection(database):
+    token = "gender-put-" + "b" * 23
+    owner = client_hash(token)
+    response = client.put("/api/profile/avatar-gender", json={"gender": "male"},
+                          headers={"X-Michibiki-Client": token})
+    assert response.status_code == 200
+    assert response.json()["gender"] == "male"
+    assert db.get_profile_avatar_gender(owner) == "male"
+
+
+def test_put_avatar_gender_rejects_an_invalid_value(database):
+    token = "gender-invalid-" + "c" * 19
+    response = client.put("/api/profile/avatar-gender", json={"gender": "robot"},
+                          headers={"X-Michibiki-Client": token})
+    assert response.status_code == 422
+
+
+@patch("michibiki.media.persona_rpc", new_callable=AsyncMock)
+def test_create_avatars_only_draws_from_the_selected_gender(mock_rpc, database):
+    token = "gender-filter-" + "d" * 20
+    owner = client_hash(token)
+    db.set_profile_avatar_gender(owner, "male")
+    mock_rpc.side_effect = [
+        _mixed_gender_catalog(),
+        {"tasks": [{"template_id": f"male_style_{i}", "task_id": f"task-{i}"} for i in range(10)]},
+    ]
+    response = client.post("/api/avatars", json={"photo": "ZmFrZQ==", "consent": True},
+                           headers={"X-Michibiki-Client": token})
+    assert response.status_code == 200
+    chosen = mock_rpc.call_args_list[1].args[1]["template_ids"]
+    assert len(chosen) == 10
+    assert all(t.startswith("male_") for t in chosen)
+
+
+@patch("michibiki.media.persona_rpc", new_callable=AsyncMock)
+def test_create_avatars_draws_from_both_genders_when_none_selected(mock_rpc, database):
+    token = "gender-none-" + "e" * 22
+    mock_rpc.side_effect = [
+        _mixed_gender_catalog(),
+        {"tasks": [{"template_id": "male_style_0", "task_id": "task-0"}]},
+    ]
+    response = client.post("/api/avatars", json={"photo": "ZmFrZQ==", "consent": True},
+                           headers={"X-Michibiki-Client": token})
+    assert response.status_code == 200
+    chosen = mock_rpc.call_args_list[1].args[1]["template_ids"]
+    assert len(chosen) == 10
+    all_ids = {f"male_style_{i}" for i in range(12)} | {f"female_style_{i}" for i in range(12)}
+    assert all(t in all_ids for t in chosen)
