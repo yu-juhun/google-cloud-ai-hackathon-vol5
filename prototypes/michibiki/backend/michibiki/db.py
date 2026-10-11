@@ -198,6 +198,19 @@ def migrate(db=None):
 
                 conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_gender VARCHAR"))
                 conn.execute(insert(migrations).values(version=6))
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 7)).first():
+                # Self-healing: on the real deployed Cloud SQL instance, image_rate_windows
+                # was missing despite schema_migrations recording version 3 as applied
+                # (observed 2026-10-11 -- cause unclear, likely a manual drop or partial
+                # migration at some point). checkfirst=True on every core table makes this
+                # a no-op wherever the schema is already correct.
+                migrations.create(conn, checkfirst=True)
+                avatar_sets.create(conn, checkfirst=True)
+                consultations.create(conn, checkfirst=True)
+                image_rate_windows.create(conn, checkfirst=True)
+                video_jobs.create(conn, checkfirst=True)
+                avatar_pool.create(conn, checkfirst=True)
+                conn.execute(insert(migrations).values(version=7))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
@@ -206,6 +219,7 @@ def migrate(db=None):
         conn.execute(insert(migrations).values(version=4))
         conn.execute(insert(migrations).values(version=5))
         conn.execute(insert(migrations).values(version=6))
+        conn.execute(insert(migrations).values(version=7))
 
 
 def reserve_image_request(models):

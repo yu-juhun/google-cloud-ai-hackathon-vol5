@@ -65,7 +65,7 @@ def test_migration_and_idempotency(database):
     with database.connect() as conn:
         assert conn.execute(select(func.count()).select_from(db.missions)).scalar() == 1
         assert (
-            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 6
+            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 7
         )
 
 
@@ -252,7 +252,7 @@ def test_migration_5_upgrades_a_pre_existing_version_4_database(tmp_path, monkey
     db.migrate(engine)
 
     with engine.connect() as conn:
-        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 6
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 7
 
     db.add_avatar_pool_entries("client-upgrade", 1, [
         {"template_id": "female_manga_mood", "object_name": "avatars/u/female_manga_mood"},
@@ -354,7 +354,7 @@ def test_migration_6_upgrades_a_pre_existing_version_5_database(tmp_path, monkey
     db.migrate(engine)
 
     with engine.connect() as conn:
-        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 6
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 7
 
     assert db.get_profile_avatar_gender("legacy-owner-3") is None
     db.set_profile_avatar_gender("legacy-owner-3", "female")
@@ -388,3 +388,53 @@ def test_avatar_object_names_owned_by_keeps_only_the_callers_own_entries(databas
 def test_avatar_object_names_owned_by_returns_empty_list_for_no_input(database):
     assert db.avatar_object_names_owned_by("owner-a", []) == []
     assert db.avatar_object_names_owned_by("owner-a", None) == []
+
+
+def test_migration_7_recreates_a_table_schema_migrations_thinks_already_exists(tmp_path, monkeypatch):
+    """Regression test: on the real deployed Cloud SQL instance (2026-10-11),
+    image_rate_windows was missing even though schema_migrations recorded
+    version 3 (which creates it) as already applied -- so every subsequent
+    migrate() silently skipped recreating it, and every image generation
+    request failed with 'relation "image_rate_windows" does not exist'.
+    Seeds that exact anomaly (a real DB where versions 1-6 are recorded
+    applied, but image_rate_windows was never actually created) and confirms
+    migrate()'s version-7 branch creates it (checkfirst=True) without relying
+    on the migrations log to have noticed it was missing."""
+    engine = create_engine(f"sqlite:///{tmp_path / 'missing_table.db'}")
+    monkeypatch.setattr(db, "engine", lambda: engine)
+
+    legacy_metadata = MetaData()
+    legacy_migrations = Table(
+        "schema_migrations", legacy_metadata, Column("version", Integer, primary_key=True)
+    )
+    legacy_profiles = Table(
+        "profiles",
+        legacy_metadata,
+        Column("owner_id", String, primary_key=True),
+        Column("conditions", JSON(), nullable=False),
+        Column("version", Integer, nullable=False),
+        Column("updated_at", DateTime(timezone=True), nullable=False),
+        Column("avatar_object_name", String),
+        Column("avatar_gender", String),
+    )
+    with engine.begin() as conn:
+        legacy_metadata.create_all(conn)
+        db.avatar_sets.create(conn, checkfirst=True)
+        db.consultations.create(conn, checkfirst=True)
+        db.video_jobs.create(conn, checkfirst=True)
+        db.avatar_pool.create(conn, checkfirst=True)
+        # Deliberately NOT creating image_rate_windows -- that's the anomaly.
+        for v in (1, 2, 3, 4, 5, 6):
+            conn.execute(insert(legacy_migrations).values(version=v))
+
+    with pytest.raises(Exception):
+        with engine.connect() as conn:
+            conn.execute(select(db.image_rate_windows)).all()
+
+    db.migrate(engine)
+
+    with engine.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 7
+        assert conn.execute(select(db.image_rate_windows)).all() == []
+
+    engine.dispose()
