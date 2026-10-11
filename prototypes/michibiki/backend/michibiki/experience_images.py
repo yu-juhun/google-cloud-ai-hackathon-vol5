@@ -145,7 +145,7 @@ def scene_prompt(assessment, place):
     )
     return (
         "Create one joyful, natural travel photograph-style illustration. Preserve the "
-        "adult woman's face, hairstyle and manual wheelchair from the reference image, "
+        "person's face, hairstyle and any mobility device from the reference image, "
         "but replace its background. The destination is in Japan. "
         + activity
         + "Warm daylight, natural expression, credible "
@@ -160,7 +160,19 @@ def scene_prompt(assessment, place):
     )
 
 
-async def generate(result, mission_id, budget=120):
+def avatar_reference_for(ordinal, avatar_object_names):
+    """Maps a twin's 1-indexed ordinal to its own personalized avatar's
+    object_name, or None if the caller supplied no avatar for that slot
+    (fewer avatars than twins, or no avatars at all)."""
+    if not avatar_object_names or not ordinal:
+        return None
+    index = ordinal - 1
+    if index < 0 or index >= len(avatar_object_names):
+        return None
+    return avatar_object_names[index]
+
+
+async def generate(result, mission_id, avatar_object_names=None, budget=120):
     bucket_name = os.environ.get("EXPERIENCE_BUCKET")
     reference_url = os.environ.get("EXPERIENCE_REFERENCE_URL")
     if not bucket_name or not reference_url:
@@ -186,6 +198,43 @@ async def generate(result, mission_id, budget=120):
                 ),
             )
             bucket = storage.Client().bucket(bucket_name)
+            avatar_bucket_name = os.environ.get("AVATAR_BUCKET")
+            avatar_bucket = (
+                storage.Client().bucket(avatar_bucket_name) if avatar_bucket_name else None
+            )
+
+            async def reference_for(twin):
+                """Each twin's own generated avatar, falling back to the shared
+                demo reference photo if none was supplied or it can't be read."""
+                ordinal = twin.get("ordinal")
+                avatar_name = avatar_reference_for(ordinal, avatar_object_names)
+                if not avatar_name:
+                    logger.info(
+                        "experience_image_reference_fallback mission_id=%s ordinal=%s reason=no_avatar_supplied avatar_count=%s",
+                        mission_id, ordinal, len(avatar_object_names or []),
+                    )
+                    return reference, "image/png"
+                if not avatar_bucket:
+                    logger.info(
+                        "experience_image_reference_fallback mission_id=%s ordinal=%s reason=no_avatar_bucket_configured",
+                        mission_id, ordinal,
+                    )
+                    return reference, "image/png"
+                try:
+                    blob = avatar_bucket.blob(avatar_name)
+                    data = await asyncio.to_thread(blob.download_as_bytes)
+                    await asyncio.to_thread(blob.reload)
+                    logger.info(
+                        "experience_image_reference_personalized mission_id=%s ordinal=%s avatar_name=%s bytes=%s content_type=%s",
+                        mission_id, ordinal, avatar_name, len(data), blob.content_type,
+                    )
+                    return data, blob.content_type or "image/jpeg"
+                except Exception as exc:
+                    logger.warning(
+                        "experience_image_reference_fallback mission_id=%s ordinal=%s reason=read_failed avatar_name=%s error_type=%s",
+                        mission_id, ordinal, avatar_name, type(exc).__name__,
+                    )
+                return reference, "image/png"
 
             async def one(twin):
                 assessments = twin.get("assessments", [])
@@ -204,6 +253,7 @@ async def generate(result, mission_id, budget=120):
                 }
                 twin["experience_image"] = metadata
                 try:
+                    reference_bytes, reference_mime = await reference_for(twin)
                     async with IMAGE_SLOTS:
                         metadata["status"] = "generating"
                         data = await image_call(
@@ -216,7 +266,7 @@ async def generate(result, mission_id, budget=120):
                             ),
                             contents=[
                                 types.Part.from_bytes(
-                                    data=reference, mime_type="image/png"
+                                    data=reference_bytes, mime_type=reference_mime
                                 ),
                                 scene_prompt(
                                     assessment, places.get(assessment["place_id"], {})

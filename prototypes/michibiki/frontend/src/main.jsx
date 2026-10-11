@@ -61,10 +61,40 @@ function App() {
   const [liveInput, setLiveInput] = useState(null)
   const [detailAgent, setDetailAgent] = useState(null)
   const [tripSaved, setTripSaved] = useState(false)
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState(null)
+  const [tripAvatars, setTripAvatars] = useState([])
+  const [tripAvatarObjectNames, setTripAvatarObjectNames] = useState([])
+  const refreshProfileAvatarUrl = async () => {
+    try {
+      const data = await api('/api/avatars/pool')
+      setProfileAvatarUrl(data.avatars.find(a => a.object_name === data.selected)?.url || null)
+    } catch (err) {
+      // silently fail
+    }
+  }
+  useEffect(() => {
+    refreshProfileAvatarUrl()
+  }, [])
+  useEffect(() => {
+    if (mediaState.status === 'ready') {
+      refreshProfileAvatarUrl()
+    }
+  }, [mediaState.status])
   useEffect(() => { setTripSaved(false) }, [result?.mission_id])
+  useEffect(() => {
+    if (page !== 'plan') return
+    let active = true
+    api('/api/avatars/pool').then(data => {
+      if (!active) return
+      const shuffled = [...data.avatars].sort(() => Math.random() - 0.5).slice(0, 10)
+      setTripAvatars(shuffled.map(a => a.url))
+      setTripAvatarObjectNames(shuffled.map(a => a.object_name))
+    }).catch(() => { if (active) { setTripAvatars([]); setTripAvatarObjectNames([]) } })
+    return () => { active = false }
+  }, [page])
   const displayTrip = liveInput?.trip || trip
   const displayProfile = liveInput?.profile || profile
-  const travelers = travelersFor(result, displayTrip.twin_count || 3, profile.twinAvatars)
+  const travelers = travelersFor(result, displayTrip.twin_count || 3, tripAvatars)
   const saveTrip = async () => {
     if (!result) return
     try { await api(`/api/missions/${result.mission_id}/save`, { method: 'POST' }); setTripSaved(true) }
@@ -72,23 +102,62 @@ function App() {
   }
   const inFlight = useRef(false)
   const go = next => { location.hash = next === 'home' ? '' : next; setPage(next); window.scrollTo(0, 0) }
+  // POST /api/missions returns immediately once the mission is created --
+  // the actual analysis (tens of seconds to minutes) runs server-side in
+  // the background. We find out it's done by polling this short, cheap
+  // endpoint instead of holding one connection open for the whole analysis
+  // (a long-idle connection like that is exactly the kind some clients --
+  // Safari, observed -- silently drop mid-flight, even though the backend
+  // keeps working and saves the result regardless). First ~30s polls every
+  // 5s (trips are often quick), then every 10s up to ~12 minutes total.
+  const pollMission = async id => {
+    const startedAt = Date.now()
+    setLoading(true); setStarted(startedAt); setError('')
+    localStorage.setItem('michibiki-last-mission', id)
+    for (let attempt = 0; attempt <= 78; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, attempt <= 6 ? 5000 : 10000))
+      try {
+        const data = await api(`/api/missions/${encodeURIComponent(id)}`)
+        if (data.itinerary) {
+          data.timings.browser_ms = Date.now() - startedAt
+          setResult(data); setLiveInput(data.input); setLoading(false)
+          return
+        }
+        if (['failed', 'timed_out'].includes(data.status)) {
+          setError('旅の分析を完了できませんでした。時間をおいて、もう一度お試しください。')
+          setLoading(false)
+          return
+        }
+      } catch (err) {
+        // a single polling request failing is just a transient network
+        // hiccup (unlike the old one-long-connection design, nothing is
+        // lost by retrying) -- only give up once we're out of attempts
+        if (attempt === 78) { setError(err.message); setLoading(false); return }
+      }
+    }
+    setError('処理が時間内に終わりませんでした。保存済み結果を確認するか、もう一度お試しください。')
+    setLoading(false)
+  }
   const restore = async () => {
     const id = localStorage.getItem('michibiki-last-mission')
     if (!id) { setError('保存済みの依頼がありません。旅の条件を入力してください。'); return }
-    setLoading(true); setStarted(Date.now()); setError('')
-    try { const data = await api(`/api/missions/${encodeURIComponent(id)}`); if (!data.itinerary) throw new Error(`前の依頼の状態：${data.status}。条件画面から新しく依頼してください。`); setResult(data); setLiveInput(data.input) }
-    catch (err) { setError(err.message) }
-    finally { setLoading(false) }
+    await pollMission(id)
   }
   const dispatch = async () => {
     if (inFlight.current || loading) return
     inFlight.current = true
-    const input = { trip: { ...trip }, profile: serverProfile(profile), idempotency_key: crypto.randomUUID() }
-    const start = Date.now()
-    setLiveInput(input); setResult(null); setError(''); setLoading(true); setStarted(start); go('map')
-    try { const data = await api('/api/missions', { method: 'POST', body: input }); data.timings.browser_ms = Date.now() - start; setResult(data); localStorage.setItem('michibiki-last-mission', data.mission_id) }
-    catch (err) { setError(err.message); if (err.missionId) localStorage.setItem('michibiki-last-mission', err.missionId) }
-    finally { setLoading(false); inFlight.current = false }
+    const input = {
+      trip: { ...trip }, profile: serverProfile(profile), idempotency_key: crypto.randomUUID(),
+      avatar_object_names: tripAvatarObjectNames,
+    }
+    // tripAvatars is already drawn when the Plan page loaded (see the effect above),
+    // so what the traveler count selector previewed is exactly what the live map shows.
+    setLiveInput(input); setResult(null); go('map')
+    try {
+      const created = await api('/api/missions', { method: 'POST', body: input })
+      await pollMission(created.mission_id)
+    } catch (err) { setError(err.message); setLoading(false) }
+    finally { inFlight.current = false }
   }
   useEffect(() => { if (['map', 'results'].includes(location.hash.slice(1)) && localStorage.getItem('michibiki-last-mission')) restore() }, [])
   useEffect(() => { const sync = () => setPage(location.hash.slice(1) || 'home'); addEventListener('hashchange', sync); return () => removeEventListener('hashchange', sync) }, [])
@@ -96,13 +165,13 @@ function App() {
 
   return <main>
     <a className="skip-link" href="#content">本文へ移動</a>
-    <nav aria-label="メインナビゲーション"><button className="brand" onClick={() => go('home')} aria-label="michibiki のホームへ"><svg className="brand-mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="2" y="2" width="30" height="30" rx="10" fill="#e8f7ff"/><path d="M9 10.5c3.8-3.1 10.5-2.9 13.5.7 3 3.7.8 8.1-2.3 9.8-3.2 1.7-6.7.2-7.1 4.4" fill="none" stroke="#4d85b3" strokeWidth="3" strokeLinecap="round"/><circle cx="13" cy="25" r="3.5" fill="#ef8db3"/></svg><span className="brand-word">michibiki</span><span className="brand-dot">•</span></button><div className="nav-actions"><button className="nav-button nav-profile" onClick={() => go('profile')}>あなたの条件 <span>→</span></button><button className="nav-button nav-history" onClick={() => go('history')}>履歴 <span>→</span></button><button className="nav-button" onClick={() => go('plan')}>旅をつくる <span>→</span></button><button className="avatar" onClick={() => go('profile')} aria-label="あなたのプロフィール"><img src={profile.avatar} alt="" /></button></div></nav>
+    <nav aria-label="メインナビゲーション"><button className="brand" onClick={() => go('home')} aria-label="michibiki のホームへ"><svg className="brand-mark" viewBox="0 0 34 34" aria-hidden="true"><rect x="2" y="2" width="30" height="30" rx="10" fill="#e8f7ff"/><path d="M9 10.5c3.8-3.1 10.5-2.9 13.5.7 3 3.7.8 8.1-2.3 9.8-3.2 1.7-6.7.2-7.1 4.4" fill="none" stroke="#4d85b3" strokeWidth="3" strokeLinecap="round"/><circle cx="13" cy="25" r="3.5" fill="#ef8db3"/></svg><span className="brand-word">michibiki</span><span className="brand-dot">•</span></button><div className="nav-actions"><button className="nav-button nav-profile" onClick={() => go('profile')}>あなたの条件 <span>→</span></button><button className="nav-button nav-history" onClick={() => go('history')}>履歴 <span>→</span></button><button className="nav-button" onClick={() => go('plan')}>旅をつくる <span>→</span></button><button className="avatar" onClick={() => go('profile')} aria-label="あなたのプロフィール"><img src={profileAvatarUrl || defaultAvatar} alt="" /></button></div></nav>
     <div className="page-shell" key={page}>
     {page === 'home' && <Landing onStart={() => go('plan')} />}
-    {page === 'plan' && <Plan trip={trip} setTrip={setTrip} profile={profile} setProfile={setProfile} onDispatch={dispatch} onProfile={() => go('profile')} busy={loading} />}
-    {page === 'profile' && <Profile profile={profile} setProfile={setProfile} mediaState={mediaState} onPlan={() => go('plan')} />}
+    {page === 'plan' && <Plan trip={trip} setTrip={setTrip} profile={profile} setProfile={setProfile} onDispatch={dispatch} onProfile={() => go('profile')} busy={loading} profileAvatarUrl={profileAvatarUrl} tripAvatars={tripAvatars} />}
+    {page === 'profile' && <Profile profile={profile} setProfile={setProfile} mediaState={mediaState} profileAvatarUrl={profileAvatarUrl} onRefreshAvatar={refreshProfileAvatarUrl} onPlan={() => go('plan')} />}
     {page === 'history' && <History onOpen={id => { localStorage.setItem('michibiki-last-mission', id); go('results'); restore() }} onPlan={() => go('plan')} />}
-    {page === 'map' && !result && <LiveTrip page={page} trip={displayTrip} profile={displayProfile} avatars={profile.twinAvatars} result={null} loading={loading} error={error} started={started} onNewTrip={() => go('plan')} onRestore={restore} />}
+    {page === 'map' && !result && <LiveTrip page={page} trip={displayTrip} profile={displayProfile} avatars={tripAvatars} result={null} loading={loading} error={error} started={started} onNewTrip={() => go('plan')} onRestore={restore} />}
     {page === 'map' && result && <Explore trip={displayTrip} profile={displayProfile} travelers={travelers} result={result} loading={loading} error={error} started={started} onRestore={restore} onDetail={setDetailAgent} onEdit={() => go('plan')} onResults={() => go('results')} />}
     {page === 'results' && result && <Results trip={displayTrip} profile={displayProfile} travelers={travelers} result={result} saved={tripSaved || result.saved} onSave={saveTrip} onExplore={() => go('map')} onNewTrip={extra => { if (typeof extra === 'string') setTrip({ ...displayTrip, wish: `${displayTrip.wish}\n${extra}`.slice(0, 1000) }); go('plan') }} />}
     {page === 'results' && !result && <LiveTrip page={page} trip={displayTrip} profile={displayProfile} result={result} loading={loading} error={error} started={started} onNewTrip={() => go('plan')} onRestore={restore} />}
@@ -141,7 +210,7 @@ function Landing({ onStart }) {
   </>
 }
 
-function Plan({ trip, setTrip, profile, setProfile, onDispatch, onProfile, busy = false }) {
+function Plan({ trip, setTrip, profile, setProfile, onDispatch, onProfile, busy = false, profileAvatarUrl, tripAvatars }) {
   const [inputMethod, setInputMethod] = useState('text')
   const useConsultation = (wish, persona) => {
     update('wish', wish)
@@ -150,10 +219,10 @@ function Plan({ trip, setTrip, profile, setProfile, onDispatch, onProfile, busy 
     setInputMethod('text')
   }
   const update = (key, value) => setTrip({ ...trip, [key]: value })
-return <section className="plan-page" id="content"><div className="plan-progress"><span className="active">1　旅のこと</span><i /><span>2　ガイドが体験</span><i /><span>3　体験を受け取る</span></div><div className="plan-layout"><div className="plan-copy"><p className="eyebrow">あなたの次の旅</p><h1>今回の旅を、<br /><em>教えてください。</em></h1><p>行き先と、そこでしてみたいことを教えてください。あなたの移動条件を知っている旅のガイドたちが、どこを確かめるか考えます。</p><div className="profile-applied"><span>✓</span><p><b>あなたの移動条件を受け取っています</b><small>{profile.home}から出発 / 車いす幅 {profile.width}cm / 段差 {profile.step}cmまで</small></p><button type="button" onClick={onProfile}>見直す</button></div><div className="guide-roles"><span>行きたい場所を見る相棒</span><span>移動のしやすさを見る相棒</span><span>休憩場所を見る相棒</span></div></div><form className="trip-form" onSubmit={event => { event.preventDefault(); onDispatch() }}><h2>この旅で、楽しみにしていることは？</h2><label>行き先<input placeholder="例：東京・秋葉原など、行きたいエリア" value={trip.destination} onChange={event => update('destination', event.target.value)} required /></label><div className="form-row"><label>行く日<input value={trip.date} onChange={event => update('date', event.target.value)} required /></label><label>滞在時間<input value={trip.time} onChange={event => update('time', event.target.value)} required /></label></div><div className="input-method" role="group" aria-label="希望の入力方法"><button type="button" aria-pressed={inputMethod === 'text'} onClick={() => setInputMethod('text')}>文字で伝える</button><button type="button" aria-pressed={inputMethod === 'voice'} onClick={() => setInputMethod('voice')}>声で相談する</button></div>{inputMethod === 'voice' && <VoiceConsultation trip={trip} profile={profile} onUse={useConsultation} />}<label>してみたいこと<textarea placeholder="例：乃木坂46のMVに登場した東京のロケ地を巡りたい。近くのカフェでアクスタの写真も撮りたい。" value={trip.wish} onChange={event => update('wish', event.target.value)} required /></label><TwinFleet count={trip.twin_count} onChange={count => update('twin_count', count)} avatars={profile.twinAvatars} disabled={busy} /><p className="form-note">入力後、{profile.home}から旅のガイドたちが出発し、「通れる・過ごせる・行きたい」をそれぞれの場所で確かめます。</p><button className="journey-button dispatch" type="submit"><span>旅のガイドに、この旅を託す</span><i>→</i></button></form></div></section>
+return <section className="plan-page" id="content"><div className="plan-progress"><span className="active">1　旅のこと</span><i /><span>2　ガイドが体験</span><i /><span>3　体験を受け取る</span></div><div className="plan-layout"><div className="plan-copy"><p className="eyebrow">あなたの次の旅</p><h1>今回の旅を、<br /><em>教えてください。</em></h1><p>行き先と、そこでしてみたいことを教えてください。あなたの移動条件を知っている旅のガイドたちが、どこを確かめるか考えます。</p><div className="profile-applied"><span>✓</span><p><b>あなたの移動条件を受け取っています</b><small>{profile.home}から出発 / 車いす幅 {profile.width}cm / 段差 {profile.step}cmまで</small></p><button type="button" onClick={onProfile}>見直す</button></div><div className="guide-roles"><span>行きたい場所を見る相棒</span><span>移動のしやすさを見る相棒</span><span>休憩場所を見る相棒</span></div></div><form className="trip-form" onSubmit={event => { event.preventDefault(); onDispatch() }}><h2>この旅で、楽しみにしていることは？</h2><label>行き先<input placeholder="例：東京・秋葉原など、行きたいエリア" value={trip.destination} onChange={event => update('destination', event.target.value)} required /></label><div className="form-row"><label>行く日<input value={trip.date} onChange={event => update('date', event.target.value)} required /></label><label>滞在時間<input value={trip.time} onChange={event => update('time', event.target.value)} required /></label></div><div className="input-method" role="group" aria-label="希望の入力方法"><button type="button" aria-pressed={inputMethod === 'text'} onClick={() => setInputMethod('text')}>文字で伝える</button><button type="button" aria-pressed={inputMethod === 'voice'} onClick={() => setInputMethod('voice')}>声で相談する</button></div>{inputMethod === 'voice' && <VoiceConsultation trip={trip} profile={profile} profileAvatarUrl={profileAvatarUrl} onUse={useConsultation} />}<label>してみたいこと<textarea placeholder="例：乃木坂46のMVに登場した東京のロケ地を巡りたい。近くのカフェでアクスタの写真も撮りたい。" value={trip.wish} onChange={event => update('wish', event.target.value)} required /></label><TwinFleet count={trip.twin_count} onChange={count => update('twin_count', count)} avatars={tripAvatars} disabled={busy} /><p className="form-note">入力後、{profile.home}から旅のガイドたちが出発し、「通れる・過ごせる・行きたい」をそれぞれの場所で確かめます。</p><button className="journey-button dispatch" type="submit"><span>旅のガイドに、この旅を託す</span><i>→</i></button></form></div></section>
 }
 
-function Profile({ profile, setProfile, onPlan, mediaState }) {
+function Profile({ profile, setProfile, onPlan, mediaState, profileAvatarUrl, onRefreshAvatar }) {
   const [saved, setSaved] = useState(false)
   const [saveError, setSaveError] = useState('')
   const update = (key, value) => { setProfile({ ...profile, [key]: value }); setSaved(false) }
@@ -166,7 +235,7 @@ function Profile({ profile, setProfile, onPlan, mediaState }) {
       <p>ここで伝えたことを、旅のガイドが持って現地へ向かいます。<br />毎回入力しなくていい、あなたのための旅の下準備です。</p>
     </header>
     <div className="profile-layout">
-      <aside className="profile-side"><div className="profile-photo"><img src={profile.avatar} alt="プロフィール画像" /></div><AvatarSetup profile={profile} setProfile={setProfile} mediaState={mediaState} /><h2>旅のガイドが<br />受け取ること</h2><p>「入れるか」だけでなく、どんな一日なら心地よく過ごせるかを確かめます。</p><ul><li>車いすの幅と越えられる段差</li><li>疲れずに移動できる時間</li><li>先に確認しておきたい場所</li></ul></aside>
+      <aside className="profile-side"><div className="profile-photo"><img src={profileAvatarUrl || defaultAvatar} alt="プロフィール画像" /></div><AvatarSetup profile={profile} setProfile={setProfile} mediaState={mediaState} onRefreshAvatar={onRefreshAvatar} /><h2>旅のガイドが<br />受け取ること</h2><p>「入れるか」だけでなく、どんな一日なら心地よく過ごせるかを確かめます。</p><ul><li>車いすの幅と越えられる段差</li><li>疲れずに移動できる時間</li><li>先に確認しておきたい場所</li></ul></aside>
       <form className="profile-form" onSubmit={event => { event.preventDefault(); save() }}>
         <div className="profile-form-head"><div><p className="eyebrow">BASIC CONDITIONS</p><h2>移動について</h2></div><span>必須ではありません。分かる範囲で大丈夫です。</span></div>
         <div className="profile-grid">

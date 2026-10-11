@@ -14,7 +14,9 @@ from sqlalchemy import (
     Table,
     UniqueConstraint,
     create_engine,
+    delete,
     insert,
+    inspect,
     select,
     update,
 )
@@ -33,6 +35,8 @@ profiles = Table(
     Column("conditions", json_type, nullable=False),
     Column("version", Integer, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False),
+    Column("avatar_object_name", String),
+    Column("avatar_gender", String),
 )
 missions = Table(
     "missions",
@@ -79,13 +83,21 @@ itineraries = Table(
     UniqueConstraint("mission_id", "version"),
 )
 avatar_sets = Table(
-    "avatar_sets",
-    metadata,
+    "avatar_sets", metadata,
     Column("id", String(36), primary_key=True),
     Column("client_hash", String(64), nullable=False),
-    Column("provider_task_id", String, nullable=False),
+    Column("provider_task_ids", json_type, nullable=False),
     Column("status", String, nullable=False),
-    Column("assets", json_type),
+    Column("version", Integer, nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
+avatar_pool = Table(
+    "avatar_pool", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("client_hash", String(64), nullable=False),
+    Column("template_id", String, nullable=False),
+    Column("object_name", String, nullable=False),
+    Column("version", Integer, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
 consultations = Table(
@@ -156,6 +168,24 @@ def engine():
     )
 
 
+def _ensure_avatar_pool_schema(conn):
+    """Repair both historical meanings of migration 5 without deleting assets."""
+    from sqlalchemy import text
+
+    avatar_pool.create(conn, checkfirst=True)
+    columns = {c["name"] for c in inspect(conn).get_columns("profiles")}
+    if "avatar_object_name" not in columns:
+        conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_object_name VARCHAR"))
+    if inspect(conn).has_table("avatar_sets"):
+        columns = {c["name"] for c in inspect(conn).get_columns("avatar_sets")}
+        if "provider_task_ids" not in columns:
+            if inspect(conn).has_table("avatar_sets_legacy"):
+                raise RuntimeError("Legacy avatar archive already exists; manual reconciliation required")
+            # Keep generated image pointers and completed old jobs recoverable.
+            conn.execute(text("ALTER TABLE avatar_sets RENAME TO avatar_sets_legacy"))
+    avatar_sets.create(conn, checkfirst=True)
+
+
 def migrate(db=None):
     db = db or engine()
     with db.begin() as conn:
@@ -181,9 +211,33 @@ def migrate(db=None):
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 4)).first():
                 video_jobs.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=4))
+            # An earlier PR #20 used version 5 for journey_video_jobs. Checking
+            # the actual columns also repairs those already-deployed databases.
+            _ensure_avatar_pool_schema(conn)
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 5)).first():
-                journey_video_jobs.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=5))
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 6)).first():
+                from sqlalchemy import text
+
+                if "avatar_gender" not in {c["name"] for c in inspect(conn).get_columns("profiles")}:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_gender VARCHAR"))
+                conn.execute(insert(migrations).values(version=6))
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 7)).first():
+                # Self-healing: on the real deployed Cloud SQL instance, image_rate_windows
+                # was missing despite schema_migrations recording version 3 as applied
+                # (observed 2026-10-11 -- cause unclear, likely a manual drop or partial
+                # migration at some point). checkfirst=True on every core table makes this
+                # a no-op wherever the schema is already correct.
+                migrations.create(conn, checkfirst=True)
+                avatar_sets.create(conn, checkfirst=True)
+                consultations.create(conn, checkfirst=True)
+                image_rate_windows.create(conn, checkfirst=True)
+                video_jobs.create(conn, checkfirst=True)
+                avatar_pool.create(conn, checkfirst=True)
+                conn.execute(insert(migrations).values(version=7))
+            journey_video_jobs.create(conn, checkfirst=True)
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 8)).first():
+                conn.execute(insert(migrations).values(version=8))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
@@ -191,6 +245,9 @@ def migrate(db=None):
         conn.execute(insert(migrations).values(version=3))
         conn.execute(insert(migrations).values(version=4))
         conn.execute(insert(migrations).values(version=5))
+        conn.execute(insert(migrations).values(version=6))
+        conn.execute(insert(migrations).values(version=7))
+        conn.execute(insert(migrations).values(version=8))
 
 
 def find_journey_video(owner, mission_id):
@@ -501,14 +558,9 @@ def is_itinerary_saved(mission_id):
         )
 
 
-def create_avatar_set(client_hash, provider_task_id):
-    record = dict(
-        id=str(uuid4()),
-        client_hash=client_hash,
-        provider_task_id=provider_task_id,
-        status="generating",
-        created_at=now(),
-    )
+def create_avatar_set(client_hash, provider_task_ids, version):
+    record = dict(id=str(uuid4()), client_hash=client_hash, provider_task_ids=provider_task_ids,
+                  status="generating", version=version, created_at=now())
     with engine().begin() as conn:
         conn.execute(insert(avatar_sets).values(**record))
     return record
@@ -529,13 +581,117 @@ def get_avatar_set(set_id, client_hash):
     return dict(record) if record else None
 
 
-def update_avatar_set(set_id, status, assets=None):
+def update_avatar_set(set_id, status):
     with engine().begin() as conn:
-        conn.execute(
-            update(avatar_sets)
-            .where(avatar_sets.c.id == set_id)
-            .values(status=status, assets=assets)
+        conn.execute(update(avatar_sets).where(avatar_sets.c.id == set_id).values(status=status))
+
+
+def get_current_avatar_version(client_hash):
+    with engine().connect() as conn:
+        version = conn.execute(
+            select(avatar_pool.c.version).where(avatar_pool.c.client_hash == client_hash)
+            .order_by(avatar_pool.c.version.desc()).limit(1)
+        ).scalar()
+    return version or 1
+
+
+def get_used_template_ids(client_hash, version):
+    with engine().connect() as conn:
+        rows = conn.execute(
+            select(avatar_pool.c.template_id).where(
+                avatar_pool.c.client_hash == client_hash, avatar_pool.c.version == version,
+            )
+        ).scalars().all()
+    return set(rows)
+
+
+def add_avatar_pool_entries(client_hash, version, entries):
+    with engine().begin() as conn:
+        for entry in entries:
+            conn.execute(insert(avatar_pool).values(
+                id=str(uuid4()), client_hash=client_hash, version=version,
+                template_id=entry["template_id"], object_name=entry["object_name"], created_at=now(),
+            ))
+
+
+def get_avatar_pool(client_hash, version=None):
+    version = version if version is not None else get_current_avatar_version(client_hash)
+    with engine().connect() as conn:
+        rows = conn.execute(
+            select(avatar_pool).where(
+                avatar_pool.c.client_hash == client_hash, avatar_pool.c.version == version,
+            ).order_by(avatar_pool.c.created_at)
+        ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def avatar_object_names_owned_by(client_hash, object_names):
+    """Filters a client-supplied list of avatar object_names down to the ones
+    that actually exist in this client's own current-version pool, dropping
+    anything else silently (not raised as an error -- the caller is a trip's
+    optional cosmetic personalization, not a security-sensitive operation
+    worth failing the whole trip over)."""
+    if not object_names:
+        return []
+    owned = {row["object_name"] for row in get_avatar_pool(client_hash)}
+    return [name for name in object_names if name in owned]
+
+
+def delete_avatar_pool_version(client_hash, version):
+    with engine().begin() as conn:
+        conn.execute(delete(avatar_pool).where(
+            avatar_pool.c.client_hash == client_hash, avatar_pool.c.version == version,
+        ))
+
+
+def set_profile_avatar(owner_id, object_name):
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    database = engine()
+    upsert = pg_insert if database.dialect.name == "postgresql" else sqlite_insert
+    statement = (
+        upsert(profiles)
+        .values(owner_id=owner_id, conditions={}, version=1, updated_at=now(), avatar_object_name=object_name)
+        .on_conflict_do_update(
+            index_elements=[profiles.c.owner_id],
+            set_={"avatar_object_name": object_name, "updated_at": now()},
         )
+    )
+    with database.begin() as conn:
+        conn.execute(statement)
+
+
+def get_profile_avatar(owner_id):
+    with engine().connect() as conn:
+        return conn.execute(
+            select(profiles.c.avatar_object_name).where(profiles.c.owner_id == owner_id)
+        ).scalar()
+
+
+def set_profile_avatar_gender(owner_id, gender):
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+    database = engine()
+    upsert = pg_insert if database.dialect.name == "postgresql" else sqlite_insert
+    statement = (
+        upsert(profiles)
+        .values(owner_id=owner_id, conditions={}, version=1, updated_at=now(), avatar_gender=gender)
+        .on_conflict_do_update(
+            index_elements=[profiles.c.owner_id],
+            set_={"avatar_gender": gender, "updated_at": now()},
+        )
+    )
+    with database.begin() as conn:
+        conn.execute(statement)
+
+
+def get_profile_avatar_gender(owner_id):
+    with engine().connect() as conn:
+        return conn.execute(
+            select(profiles.c.avatar_gender).where(profiles.c.owner_id == owner_id)
+        ).scalar()
 
 
 def create_video_job(client_hash, report_id, feedback, style, tone):
@@ -576,12 +732,26 @@ def get_report(report_id, owner_id=None):
 
 
 def find_latest_ready_avatar_set(client_hash):
+    # Do not hold a DB connection while the pool/profile helpers acquire theirs.
+    pool = get_avatar_pool(client_hash)
+    selected = get_profile_avatar(client_hash)
     with engine().connect() as conn:
         record = conn.execute(select(avatar_sets).where(
             avatar_sets.c.client_hash == client_hash,
             avatar_sets.c.status == "ready",
         ).order_by(avatar_sets.c.created_at.desc()).limit(1)).mappings().first()
-    return dict(record) if record else None
+        result = dict(record) if record else None
+        if pool:
+            asset = next((p for p in pool if p["object_name"] == selected), pool[0])
+            return {**(result or {}), "client_hash": client_hash,
+                    "assets": {"assets": [{"object_name": asset["object_name"]}]}}
+        if inspect(conn).has_table("avatar_sets_legacy"):
+            legacy = Table("avatar_sets_legacy", MetaData(), autoload_with=conn)
+            old = conn.execute(select(legacy).where(legacy.c.client_hash == client_hash,
+                legacy.c.status == "ready").order_by(legacy.c.created_at.desc()).limit(1)).mappings().first()
+            if old:
+                return dict(old)
+    return result
 
 
 def find_active_video_job(client_hash, report_id):

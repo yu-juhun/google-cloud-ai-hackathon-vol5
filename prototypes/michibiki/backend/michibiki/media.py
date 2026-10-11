@@ -3,15 +3,18 @@ import asyncio
 import hashlib
 import json
 import os
+import random
 from datetime import timedelta
 
 import google.auth
 import httpx
 from fastapi import APIRouter, Header, HTTPException, WebSocket, WebSocketDisconnect
+from google.api_core.exceptions import NotFound
 from google.auth.transport.requests import Request
 from google.cloud import storage
 from google.oauth2.id_token import fetch_id_token
 from pydantic import BaseModel, Field
+from typing import Literal
 
 from . import db
 
@@ -40,8 +43,11 @@ async def persona_rpc(path, body=None):
 
 class AvatarPhoto(BaseModel):
     photo: str = Field(max_length=9_000_000)
-    template_id: str = Field(max_length=100)
     consent: bool
+
+
+class AvatarGenderSelection(BaseModel):
+    gender: Literal["male", "female"]
 
 
 @router.get("/avatar-templates")
@@ -54,15 +60,60 @@ async def capabilities():
     return await persona_rpc("/capabilities")
 
 
+@router.get("/profile/avatar-gender")
+async def get_avatar_gender(x_michibiki_client: str = Header()):
+    owner = client_hash(x_michibiki_client)
+    return {"gender": await asyncio.to_thread(db.get_profile_avatar_gender, owner)}
+
+
+@router.put("/profile/avatar-gender")
+async def put_avatar_gender(selection: AvatarGenderSelection, x_michibiki_client: str = Header()):
+    owner = client_hash(x_michibiki_client)
+    await asyncio.to_thread(db.set_profile_avatar_gender, owner, selection.gender)
+    return {"gender": selection.gender}
+
+
+async def _delete_pool_blob(bucket, object_name):
+    try:
+        await asyncio.to_thread(bucket.blob(object_name).delete)
+    except NotFound:
+        pass
+
+
 @router.post("/avatars")
 async def create(photo: AvatarPhoto, x_michibiki_client: str = Header()):
     owner = client_hash(x_michibiki_client)
-    result = await persona_rpc("/avatar-jobs", photo.model_dump())
-    record = await asyncio.to_thread(db.create_avatar_set, owner, result["task_id"])
-    return {"id": record["id"], "status": record["status"], "avatar_count": 11}
+    catalog = await persona_rpc("/avatar-templates")
+    gender = await asyncio.to_thread(db.get_profile_avatar_gender, owner)
+    genders = catalog if gender is None else {gender: catalog.get(gender, {})}
+    all_ids = {t["id"] for categories in genders.values() for templates in categories.values() for t in templates}
+    version = await asyncio.to_thread(db.get_current_avatar_version, owner)
+    used = await asyncio.to_thread(db.get_used_template_ids, owner, version)
+    unused = list(all_ids - used)
+    wraps = len(unused) < 10
+    target_version = version + 1 if wraps else version
+    pool = list(all_ids) if wraps else unused
+    chosen = random.sample(pool, min(10, len(pool)))
+    # Submit the new batch BEFORE touching the old pool: if persona-agent-backend
+    # rejects this (bad photo, 503, etc.) the user keeps their existing avatars
+    # instead of losing everything with nothing to replace it.
+    result = await persona_rpc("/avatar-jobs-batch", {
+        "photo": photo.photo, "consent": photo.consent, "template_ids": chosen,
+    })
+    if wraps:
+        old_pool = await asyncio.to_thread(db.get_avatar_pool, owner, version)
+        if old_pool:
+            bucket = storage.Client().bucket(os.environ["AVATAR_BUCKET"])
+            await asyncio.gather(*(_delete_pool_blob(bucket, entry["object_name"]) for entry in old_pool))
+            await asyncio.to_thread(db.delete_avatar_pool_version, owner, version)
+            # The profile's selected avatar may point at an object we just deleted;
+            # clear it so get()'s "default to first new avatar" logic re-fires.
+            await asyncio.to_thread(db.set_profile_avatar, owner, None)
+    record = await asyncio.to_thread(db.create_avatar_set, owner, result["tasks"], target_version)
+    return {"id": record["id"], "status": record["status"], "avatar_count": len(chosen)}
 
 
-def signed_assets(record):
+def signed_pool_assets(pool):
     credentials, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
     credentials.refresh(Request())
     bucket = storage.Client(credentials=credentials).bucket(os.environ["AVATAR_BUCKET"])
@@ -71,26 +122,69 @@ def signed_assets(record):
             version="v4", expiration=timedelta(hours=1), method="GET",
             service_account_email=os.environ["AVATAR_SIGNER"], access_token=credentials.token,
         )
-    assets = record["assets"]
-    return {"id": record["id"], "status": "ready",
-            "images": [sign(a["object_name"]) for a in assets["assets"]],
-            "mouth_open": sign(assets["mouth_open"]) if assets.get("mouth_open") else None,
+    return {"status": "ready",
+            "avatars": [{"object_name": a["object_name"], "template_id": a["template_id"], "url": sign(a["object_name"])}
+                       for a in pool],
             "expires_in": 3600}
+
+
+@router.get("/avatars/pool")
+async def pool(x_michibiki_client: str = Header()):
+    owner = client_hash(x_michibiki_client)
+    pool_rows = await asyncio.to_thread(db.get_avatar_pool, owner)
+    selected = await asyncio.to_thread(db.get_profile_avatar, owner)
+    signed = await asyncio.to_thread(signed_pool_assets, pool_rows)
+    signed["selected"] = selected
+    return signed
 
 
 @router.get("/avatars/{set_id}")
 async def get(set_id: str, x_michibiki_client: str = Header()):
-    record = await asyncio.to_thread(db.get_avatar_set, set_id, client_hash(x_michibiki_client))
+    owner = client_hash(x_michibiki_client)
+    record = await asyncio.to_thread(db.get_avatar_set, set_id, owner)
     if not record:
         raise HTTPException(404, "このブラウザの画像セットが見つかりません。")
     if record["status"] == "generating":
-        result = await persona_rpc("/avatar-results", {"task_id": record["provider_task_id"], "set_id": set_id})
-        if result["status"] in ("ready", "failed"):
-            await asyncio.to_thread(db.update_avatar_set, set_id, result["status"], result)
-            record.update(status=result["status"], assets=result)
+        result = await persona_rpc("/avatar-results-batch", {
+            "tasks": record["provider_task_ids"], "set_id": set_id,
+        })
+        if result["status"] == "ready":
+            await asyncio.to_thread(db.add_avatar_pool_entries, owner, record["version"], [
+                {"template_id": a["template_id"], "object_name": a["object_name"]} for a in result["avatars"]
+            ])
+            current_avatar = await asyncio.to_thread(db.get_profile_avatar, owner)
+            if not current_avatar:
+                await asyncio.to_thread(db.set_profile_avatar, owner, result["avatars"][0]["object_name"])
+            await asyncio.to_thread(db.update_avatar_set, set_id, "ready")
+            record["status"] = "ready"
+        elif result["status"] == "failed":
+            await asyncio.to_thread(db.update_avatar_set, set_id, "failed")
+            record["status"] = "failed"
+        elif result["status"] == "generating":
+            record["done"] = result.get("done")
+            record["total"] = result.get("total")
     if record["status"] == "ready":
-        return await asyncio.to_thread(signed_assets, record)
-    return {"id": set_id, "status": record["status"], "avatar_count": 11}
+        pool = await asyncio.to_thread(db.get_avatar_pool, owner, record["version"])
+        return await asyncio.to_thread(signed_pool_assets, pool)
+    response = {"id": set_id, "status": record["status"]}
+    if record["status"] == "generating" and "done" in record:
+        response["done"] = record["done"]
+        response["total"] = record["total"]
+    return response
+
+
+class AvatarSelection(BaseModel):
+    object_name: str
+
+
+@router.put("/profile/avatar")
+async def select_avatar(selection: AvatarSelection, x_michibiki_client: str = Header()):
+    owner = client_hash(x_michibiki_client)
+    pool_rows = await asyncio.to_thread(db.get_avatar_pool, owner)
+    if not any(row["object_name"] == selection.object_name for row in pool_rows):
+        raise HTTPException(404, "指定されたアバターが見つかりません。")
+    await asyncio.to_thread(db.set_profile_avatar, owner, selection.object_name)
+    return {"status": "ok"}
 
 
 @router.websocket("/persona/converse")
