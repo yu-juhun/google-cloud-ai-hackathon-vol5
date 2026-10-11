@@ -144,8 +144,7 @@ resource "google_cloud_run_v2_service" "specialist" {
       ports { container_port = 8080 }
       resources {
         limits   = { cpu = "1", memory = "512Mi" }
-        # PR #21 responds before analysis finishes; keep background CPU allocated.
-        cpu_idle = false
+        cpu_idle = true
       }
       env {
         name  = "SERVICE_ROLE"
@@ -264,7 +263,8 @@ resource "google_cloud_run_v2_service" "backend" {
       ports { container_port = 8080 }
       resources {
         limits   = { cpu = "1", memory = "512Mi" }
-        cpu_idle = true
+        # Analysis now continues after POST returns.
+        cpu_idle = false
       }
       dynamic "env" {
         for_each = {
