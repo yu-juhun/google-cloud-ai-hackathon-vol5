@@ -62,6 +62,7 @@ function App() {
   const [detailAgent, setDetailAgent] = useState(null)
   const [tripSaved, setTripSaved] = useState(false)
   const [profileAvatarUrl, setProfileAvatarUrl] = useState(null)
+  const [tripAvatars, setTripAvatars] = useState([])
   const refreshProfileAvatarUrl = async () => {
     try {
       const data = await api('/api/avatars/pool')
@@ -81,7 +82,7 @@ function App() {
   useEffect(() => { setTripSaved(false) }, [result?.mission_id])
   const displayTrip = liveInput?.trip || trip
   const displayProfile = liveInput?.profile || profile
-  const travelers = travelersFor(result, displayTrip.twin_count || 3, profile.twinAvatars)
+  const travelers = travelersFor(result, displayTrip.twin_count || 3, tripAvatars)
   const saveTrip = async () => {
     if (!result) return
     try { await api(`/api/missions/${result.mission_id}/save`, { method: 'POST' }); setTripSaved(true) }
@@ -102,6 +103,11 @@ function App() {
     inFlight.current = true
     const input = { trip: { ...trip }, profile: serverProfile(profile), idempotency_key: crypto.randomUUID() }
     const start = Date.now()
+    try {
+      const poolData = await api('/api/avatars/pool')
+      const shuffled = [...poolData.avatars].sort(() => Math.random() - 0.5)
+      setTripAvatars(shuffled.slice(0, 10).map(a => a.url))
+    } catch { setTripAvatars([]) }
     setLiveInput(input); setResult(null); setError(''); setLoading(true); setStarted(start); go('map')
     try { const data = await api('/api/missions', { method: 'POST', body: input }); data.timings.browser_ms = Date.now() - start; setResult(data); localStorage.setItem('michibiki-last-mission', data.mission_id) }
     catch (err) { setError(err.message); if (err.missionId) localStorage.setItem('michibiki-last-mission', err.missionId) }
