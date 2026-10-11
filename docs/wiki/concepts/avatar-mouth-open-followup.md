@@ -1,3 +1,17 @@
+---
+type: issue
+title: "フォローアップ: 口の開いたアバター(mouth-open)のリップシンクが一時的に失われている"
+status: draft
+owner: backend
+generated:
+  by: human:juhun.yu
+  at: 2026-10-11
+sources:
+  - id: avatar-style-pool-design
+    resource: docs/superpowers/specs/2026-10-11-avatar-style-pool-design.md
+    title: "アバター生成: スタイルプール化 — 設計"
+    credibility_signals: "team-internal-agreement"
+---
 # フォローアップ: 口の開いたアバター(mouth-open)のリップシンクが一時的に失われている
 
 ## 経緯
