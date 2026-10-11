@@ -102,37 +102,46 @@ function App() {
   }
   const inFlight = useRef(false)
   const go = next => { location.hash = next === 'home' ? '' : next; setPage(next); window.scrollTo(0, 0) }
+  // POST /api/missions returns immediately once the mission is created --
+  // the actual analysis (tens of seconds to minutes) runs server-side in
+  // the background. We find out it's done by polling this short, cheap
+  // endpoint instead of holding one connection open for the whole analysis
+  // (a long-idle connection like that is exactly the kind some clients --
+  // Safari, observed -- silently drop mid-flight, even though the backend
+  // keeps working and saves the result regardless). First ~30s polls every
+  // 5s (trips are often quick), then every 10s up to ~12 minutes total.
+  const pollMission = async id => {
+    const startedAt = Date.now()
+    setLoading(true); setStarted(startedAt); setError('')
+    localStorage.setItem('michibiki-last-mission', id)
+    for (let attempt = 0; attempt <= 78; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, attempt <= 6 ? 5000 : 10000))
+      try {
+        const data = await api(`/api/missions/${encodeURIComponent(id)}`)
+        if (data.itinerary) {
+          data.timings.browser_ms = Date.now() - startedAt
+          setResult(data); setLiveInput(data.input); setLoading(false)
+          return
+        }
+        if (['failed', 'timed_out'].includes(data.status)) {
+          setError('旅の分析を完了できませんでした。時間をおいて、もう一度お試しください。')
+          setLoading(false)
+          return
+        }
+      } catch (err) {
+        // a single polling request failing is just a transient network
+        // hiccup (unlike the old one-long-connection design, nothing is
+        // lost by retrying) -- only give up once we're out of attempts
+        if (attempt === 78) { setError(err.message); setLoading(false); return }
+      }
+    }
+    setError('処理が時間内に終わりませんでした。保存済み結果を確認するか、もう一度お試しください。')
+    setLoading(false)
+  }
   const restore = async () => {
     const id = localStorage.getItem('michibiki-last-mission')
     if (!id) { setError('保存済みの依頼がありません。旅の条件を入力してください。'); return }
-    setLoading(true); setStarted(Date.now()); setError('')
-    try { const data = await api(`/api/missions/${encodeURIComponent(id)}`); if (!data.itinerary) throw new Error(`前の依頼の状態：${data.status}。条件画面から新しく依頼してください。`); setResult(data); setLiveInput(data.input) }
-    catch (err) { setError(err.message) }
-    finally { setLoading(false) }
-  }
-  // POST /api/missions holds one connection open for the whole analysis (up
-  // to several minutes) rather than returning immediately and letting the
-  // client poll -- so a dropped connection (Safari in particular drops long
-  // idle fetches) looks like total failure even though the backend keeps
-  // working and saves the result anyway. Recover by finding that same
-  // mission (it was just created, so it's the most recent one) and polling
-  // it instead of giving up.
-  const recoverAfterDrop = async () => {
-    try {
-      const list = await api('/api/missions')
-      const recent = list.missions?.[0]
-      if (!recent || Date.now() - new Date(recent.created_at).getTime() > 20 * 60 * 1000) return false
-      localStorage.setItem('michibiki-last-mission', recent.id)
-      for (let i = 0; i < 90; i++) {
-        await new Promise(r => setTimeout(r, 5000))
-        try {
-          const data = await api(`/api/missions/${encodeURIComponent(recent.id)}`)
-          if (data.itinerary) { setResult(data); setLiveInput(data.input); setError(''); return true }
-          if (data.status === 'failed') return false
-        } catch { /* keep polling through further transient network errors */ }
-      }
-    } catch { /* fall through to showing the original error */ }
-    return false
+    await pollMission(id)
   }
   const dispatch = async () => {
     if (inFlight.current || loading) return
@@ -141,16 +150,14 @@ function App() {
       trip: { ...trip }, profile: serverProfile(profile), idempotency_key: crypto.randomUUID(),
       avatar_object_names: tripAvatarObjectNames,
     }
-    const start = Date.now()
     // tripAvatars is already drawn when the Plan page loaded (see the effect above),
     // so what the traveler count selector previewed is exactly what the live map shows.
-    setLiveInput(input); setResult(null); setError(''); setLoading(true); setStarted(start); go('map')
-    try { const data = await api('/api/missions', { method: 'POST', body: input }); data.timings.browser_ms = Date.now() - start; setResult(data); localStorage.setItem('michibiki-last-mission', data.mission_id) }
-    catch (err) {
-      if (err.missionId) localStorage.setItem('michibiki-last-mission', err.missionId)
-      if (!(await recoverAfterDrop())) setError(err.message)
-    }
-    finally { setLoading(false); inFlight.current = false }
+    setLiveInput(input); setResult(null); go('map')
+    try {
+      const created = await api('/api/missions', { method: 'POST', body: input })
+      await pollMission(created.mission_id)
+    } catch (err) { setError(err.message); setLoading(false) }
+    finally { inFlight.current = false }
   }
   useEffect(() => { if (['map', 'results'].includes(location.hash.slice(1)) && localStorage.getItem('michibiki-last-mission')) restore() }, [])
   useEffect(() => { const sync = () => setPage(location.hash.slice(1) || 'home'); addEventListener('hashchange', sync); return () => removeEventListener('hashchange', sync) }, [])
