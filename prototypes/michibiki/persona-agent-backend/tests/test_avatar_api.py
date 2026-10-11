@@ -129,3 +129,17 @@ def test_avatar_results_batch_returns_failed_when_every_task_failed(mock_status,
     })
     assert response.status_code == 200
     assert response.json() == {"status": "failed"}
+
+
+@patch("avatar_api.avatar_task_status", return_value=("error", []))
+def test_avatar_results_batch_logs_a_warning_for_each_youcam_task_error(mock_status, monkeypatch, caplog):
+    """A YouCam task reporting status="error" (e.g. no face detected in the
+    photo) was silently swallowed with no log line, making "why did generation
+    fail" impossible to diagnose from Cloud Logging alone."""
+    monkeypatch.setenv("AVATAR_BUCKET", "fake-bucket")
+    with caplog.at_level("WARNING"):
+        client.post("/avatar-results-batch", json={
+            "tasks": [{"template_id": "female_manga_mood", "task_id": "task-1"}],
+            "set_id": "11111111-1111-1111-1111-111111111111",
+        })
+    assert any("female_manga_mood" in record.message and "task-1" in record.message for record in caplog.records)

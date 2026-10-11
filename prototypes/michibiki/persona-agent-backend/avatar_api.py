@@ -188,6 +188,9 @@ def collect_batch(request):
     for task in request.tasks:
         status, outputs = avatar_task_status(task.task_id)
         if status == "error":
+            logger.warning(
+                "YouCam task reported error template_id=%s task_id=%s", task.template_id, task.task_id
+            )
             continue
         if status != "success":
             pending = True
