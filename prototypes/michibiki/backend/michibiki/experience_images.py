@@ -206,17 +206,34 @@ async def generate(result, mission_id, avatar_object_names=None, budget=120):
             async def reference_for(twin):
                 """Each twin's own generated avatar, falling back to the shared
                 demo reference photo if none was supplied or it can't be read."""
-                avatar_name = avatar_reference_for(twin.get("ordinal"), avatar_object_names)
-                if avatar_name and avatar_bucket:
-                    try:
-                        blob = avatar_bucket.blob(avatar_name)
-                        data = await asyncio.to_thread(blob.download_as_bytes)
-                        await asyncio.to_thread(blob.reload)
-                        return data, blob.content_type or "image/jpeg"
-                    except Exception:
-                        logger.warning(
-                            "Falling back to the shared reference photo for avatar_name=%s", avatar_name
-                        )
+                ordinal = twin.get("ordinal")
+                avatar_name = avatar_reference_for(ordinal, avatar_object_names)
+                if not avatar_name:
+                    logger.info(
+                        "experience_image_reference_fallback mission_id=%s ordinal=%s reason=no_avatar_supplied avatar_count=%s",
+                        mission_id, ordinal, len(avatar_object_names or []),
+                    )
+                    return reference, "image/png"
+                if not avatar_bucket:
+                    logger.info(
+                        "experience_image_reference_fallback mission_id=%s ordinal=%s reason=no_avatar_bucket_configured",
+                        mission_id, ordinal,
+                    )
+                    return reference, "image/png"
+                try:
+                    blob = avatar_bucket.blob(avatar_name)
+                    data = await asyncio.to_thread(blob.download_as_bytes)
+                    await asyncio.to_thread(blob.reload)
+                    logger.info(
+                        "experience_image_reference_personalized mission_id=%s ordinal=%s avatar_name=%s bytes=%s content_type=%s",
+                        mission_id, ordinal, avatar_name, len(data), blob.content_type,
+                    )
+                    return data, blob.content_type or "image/jpeg"
+                except Exception as exc:
+                    logger.warning(
+                        "experience_image_reference_fallback mission_id=%s ordinal=%s reason=read_failed avatar_name=%s error_type=%s",
+                        mission_id, ordinal, avatar_name, type(exc).__name__,
+                    )
                 return reference, "image/png"
 
             async def one(twin):
