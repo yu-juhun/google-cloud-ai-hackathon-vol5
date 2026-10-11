@@ -235,6 +235,20 @@ def _mixed_gender_catalog():
     }
 
 
+@patch("michibiki.media.persona_rpc", new_callable=AsyncMock)
+def test_get_avatar_set_exposes_progress_while_generating(mock_rpc, database):
+    token = "progress-" + "f" * 23
+    owner = client_hash(token)
+    record = db.create_avatar_set(owner, [{"template_id": "female_style_0", "task_id": "task-0"}], 1)
+    mock_rpc.return_value = {"status": "generating", "done": 3, "total": 10}
+    response = client.get(f"/api/avatars/{record['id']}", headers={"X-Michibiki-Client": token})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "generating"
+    assert body["done"] == 3
+    assert body["total"] == 10
+
+
 def test_get_avatar_gender_defaults_to_none(database):
     token = "gender-get-default-" + "a" * 20
     response = client.get("/api/profile/avatar-gender", headers={"X-Michibiki-Client": token})

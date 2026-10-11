@@ -6,15 +6,17 @@ import './avatar-setup.css'
 export function useAvatarSet(profile, setProfile) {
   const [status, setStatus] = useState('')
   const [error, setError] = useState('')
+  const [progress, setProgress] = useState(null)
   const id = profile.avatarSetId
   useEffect(() => {
-    if (!id) { setStatus(''); return }
+    if (!id) { setStatus(''); setProgress(null); return }
     let active = true, timer
     const refresh = async () => {
       try {
         const data = await api(`/api/avatars/${encodeURIComponent(id)}`)
         if (!active) return
         setStatus(data.status); setError('')
+        setProgress(data.status === 'generating' && typeof data.done === 'number' ? { done: data.done, total: data.total } : null)
         if (data.status === 'ready') timer = setTimeout(refresh, 50 * 60 * 1000)
         else if (data.status === 'generating') timer = setTimeout(refresh, 5000)
         else setError('画像生成に失敗しました。写真を選び直してください。')
@@ -25,7 +27,7 @@ export function useAvatarSet(profile, setProfile) {
     refresh()
     return () => { active = false; clearTimeout(timer) }
   }, [id, setProfile])
-  return { status, error }
+  return { status, error, progress }
 }
 
 export function usePool(refreshKey) {
@@ -104,7 +106,11 @@ export default function AvatarSetup({ profile, setProfile, mediaState, onRefresh
     <label className="avatar-consent"><input type="checkbox" checked={consent} disabled={generating} onChange={event => setConsent(event.target.checked)} /><span>この写真をYouCamへ送信してアバターを生成することに同意します。</span></label>
     <button type="button" className="journey-button" disabled={!photo || !consent || generating || configured !== true} onClick={create}>{generating ? '探検隊を準備しています…' : 'あなたの探検隊をつくる →'}</button>
     {configured === false && <div className="avatar-unavailable"><b>画像生成は準備中です</b><p>サービスの接続設定がまだ完了していません。今は表示中のアイコンで旅をつくれます。</p></div>}
-    {generating && <p aria-live="polite">生成には数分かかります。生成依頼は保存されるので、再読み込みしても確認できます。</p>}
+    {mediaState.status === 'generating' && <div className="avatar-progress" aria-live="polite">
+      <div className="avatar-progress-bar"><span style={{ width: mediaState.progress ? `${(mediaState.progress.done / mediaState.progress.total) * 100}%` : '6%' }} /></div>
+      <small>{mediaState.progress ? `${mediaState.progress.done} / ${mediaState.progress.total} 体が完成しました` : '生成を開始しています…'}</small>
+    </div>}
+    {generating && mediaState.status !== 'generating' && <p aria-live="polite">生成には数分かかります。生成依頼は保存されるので、再読み込みしても確認できます。</p>}
     {(error || mediaState.error) && <p className="avatar-warning" role="alert">{error || mediaState.error}</p>}
     {pool?.avatars?.length > 0 && <div className="avatar-roster"><b>生成済みのアバター(クリックでプロフィールに設定)</b><div>{pool.avatars.map(a => <button key={a.object_name} type="button" className={pool.selected === a.object_name ? 'selected' : ''} onClick={() => selectAvatar(a.object_name)}><img src={a.url} alt="" /></button>)}</div></div>}
     <details className="data-handling"><summary>写真とデータの扱い</summary><p>元の写真はアプリに保存せず、生成したアバターだけを非公開で保存します。ブラウザの保存データを消すと再表示できなくなる場合があります。</p></details>

@@ -207,7 +207,7 @@ def collect_batch(request):
         blob.upload_from_string(raw, content_type=mime)
         ready.append({"template_id": task.template_id, "object_name": object_name, "mime_type": mime})
     if pending:
-        return {"status": "generating"}
+        return {"status": "generating", "done": len(ready), "total": len(request.tasks)}
     if not ready:
         return {"status": "failed"}
     return {"status": "ready", "avatars": ready}

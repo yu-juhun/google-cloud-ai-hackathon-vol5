@@ -6,3 +6,7 @@
 .avatar-gender button{padding:7px 14px;border:1px solid #d3e2eb;border-radius:20px;background:white;color:#426990;font-weight:400;cursor:pointer}
 .avatar-gender button.selected{background:#4b79a9;border-color:#4b79a9;color:white}
 .avatar-gender button:disabled{opacity:.55;cursor:default}
+.avatar-progress{margin-top:12px}
+.avatar-progress-bar{height:8px;border-radius:6px;background:#e3edf4;overflow:hidden}
+.avatar-progress-bar span{display:block;height:100%;background:#4b79a9;transition:width .4s ease;min-width:4%}
+.avatar-progress small{display:block;margin-top:6px;color:#527594;font-size:11px}

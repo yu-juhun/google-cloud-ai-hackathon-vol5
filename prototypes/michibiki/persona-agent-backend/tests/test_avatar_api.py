@@ -64,6 +64,7 @@ def test_avatar_results_batch_returns_generating_when_any_task_is_pending(
 ):
     monkeypatch.setenv("AVATAR_BUCKET", "fake-bucket")
     mock_status.side_effect = [("success", [{"url": "https://example.com/a.jpg"}]), ("running", [])]
+    mock_download.return_value = (_fake_photo_bytes(), "image/png")
     response = client.post("/avatar-results-batch", json={
         "tasks": [
             {"template_id": "female_manga_mood", "task_id": "task-1"},
@@ -72,7 +73,7 @@ def test_avatar_results_batch_returns_generating_when_any_task_is_pending(
         "set_id": "11111111-1111-1111-1111-111111111111",
     })
     assert response.status_code == 200
-    assert response.json() == {"status": "generating"}
+    assert response.json() == {"status": "generating", "done": 1, "total": 2}
 
 
 @patch("avatar_api.download_avatar")

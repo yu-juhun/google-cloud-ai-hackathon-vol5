@@ -160,10 +160,17 @@ async def get(set_id: str, x_michibiki_client: str = Header()):
         elif result["status"] == "failed":
             await asyncio.to_thread(db.update_avatar_set, set_id, "failed")
             record["status"] = "failed"
+        elif result["status"] == "generating":
+            record["done"] = result.get("done")
+            record["total"] = result.get("total")
     if record["status"] == "ready":
         pool = await asyncio.to_thread(db.get_avatar_pool, owner, record["version"])
         return await asyncio.to_thread(signed_pool_assets, pool)
-    return {"id": set_id, "status": record["status"]}
+    response = {"id": set_id, "status": record["status"]}
+    if record["status"] == "generating" and "done" in record:
+        response["done"] = record["done"]
+        response["total"] = record["total"]
+    return response
 
 
 class AvatarSelection(BaseModel):
