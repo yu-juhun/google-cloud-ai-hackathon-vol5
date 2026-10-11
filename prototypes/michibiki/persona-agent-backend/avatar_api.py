@@ -39,6 +39,16 @@ class AvatarResult(BaseModel):
     set_id: UUID
 
 
+class AvatarBatchTask(BaseModel):
+    template_id: str
+    task_id: str
+
+
+class AvatarBatchResult(BaseModel):
+    tasks: list[AvatarBatchTask]
+    set_id: UUID
+
+
 @router.get("/capabilities")
 def capabilities():
     return {"avatar_configured": bool(os.environ.get("PERFECTCORP_API_KEY") and
@@ -166,6 +176,47 @@ def collect(request):
 async def avatar_result(request: AvatarResult):
     try:
         return await asyncio.to_thread(collect, request)
+    except Exception as exc:
+        logger.warning("Avatar batch collection failed error_type=%s", type(exc).__name__, exc_info=False)
+        raise HTTPException(502, "生成画像を取得・保存できませんでした。再確認してください。")
+
+
+def collect_batch(request):
+    bucket = storage.Client().bucket(os.environ["AVATAR_BUCKET"])
+    ready = []
+    pending = False
+    for task in request.tasks:
+        status, outputs = avatar_task_status(task.task_id)
+        if status == "error":
+            continue
+        if status != "success":
+            pending = True
+            continue
+        if not outputs:
+            continue
+        try:
+            raw, mime = download_avatar(outputs[0]["url"])
+            with Image.open(io.BytesIO(raw)) as image:
+                image.verify()
+        except Exception:
+            logger.warning("Skipping one corrupt avatar download for template_id=%s", task.template_id)
+            continue
+        object_name = f"avatars/{request.set_id}/{task.template_id}"
+        blob = bucket.blob(object_name)
+        blob.cache_control = "private, max-age=3600"
+        blob.upload_from_string(raw, content_type=mime)
+        ready.append({"template_id": task.template_id, "object_name": object_name, "mime_type": mime})
+    if pending:
+        return {"status": "generating"}
+    if not ready:
+        return {"status": "failed"}
+    return {"status": "ready", "avatars": ready}
+
+
+@router.post("/avatar-results-batch")
+async def avatar_result_batch(request: AvatarBatchResult):
+    try:
+        return await asyncio.to_thread(collect_batch, request)
     except Exception as exc:
         logger.warning("Avatar batch collection failed error_type=%s", type(exc).__name__, exc_info=False)
         raise HTTPException(502, "生成画像を取得・保存できませんでした。再確認してください。")
