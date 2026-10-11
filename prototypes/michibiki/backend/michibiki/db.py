@@ -525,6 +525,18 @@ def get_avatar_pool(client_hash, version=None):
     return [dict(row) for row in rows]
 
 
+def avatar_object_names_owned_by(client_hash, object_names):
+    """Filters a client-supplied list of avatar object_names down to the ones
+    that actually exist in this client's own current-version pool, dropping
+    anything else silently (not raised as an error -- the caller is a trip's
+    optional cosmetic personalization, not a security-sensitive operation
+    worth failing the whole trip over)."""
+    if not object_names:
+        return []
+    owned = {row["object_name"] for row in get_avatar_pool(client_hash)}
+    return [name for name in object_names if name in owned]
+
+
 def delete_avatar_pool_version(client_hash, version):
     with engine().begin() as conn:
         conn.execute(delete(avatar_pool).where(

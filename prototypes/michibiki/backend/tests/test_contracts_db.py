@@ -369,3 +369,22 @@ def test_profile_avatar_gender_roundtrip(database):
     assert db.get_profile_avatar_gender("some-owner") == "male"
     db.set_profile_avatar_gender("some-owner", "female")
     assert db.get_profile_avatar_gender("some-owner") == "female"
+
+
+def test_avatar_object_names_owned_by_keeps_only_the_callers_own_entries(database):
+    db.add_avatar_pool_entries("owner-a", 1, [
+        {"template_id": "female_style_0", "object_name": "avatars/owner-a/0"},
+        {"template_id": "female_style_1", "object_name": "avatars/owner-a/1"},
+    ])
+    db.add_avatar_pool_entries("owner-b", 1, [
+        {"template_id": "female_style_0", "object_name": "avatars/owner-b/0"},
+    ])
+    result = db.avatar_object_names_owned_by(
+        "owner-a", ["avatars/owner-a/0", "avatars/owner-b/0", "avatars/not-real"]
+    )
+    assert result == ["avatars/owner-a/0"]
+
+
+def test_avatar_object_names_owned_by_returns_empty_list_for_no_input(database):
+    assert db.avatar_object_names_owned_by("owner-a", []) == []
+    assert db.avatar_object_names_owned_by("owner-a", None) == []

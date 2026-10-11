@@ -63,6 +63,7 @@ function App() {
   const [tripSaved, setTripSaved] = useState(false)
   const [profileAvatarUrl, setProfileAvatarUrl] = useState(null)
   const [tripAvatars, setTripAvatars] = useState([])
+  const [tripAvatarObjectNames, setTripAvatarObjectNames] = useState([])
   const refreshProfileAvatarUrl = async () => {
     try {
       const data = await api('/api/avatars/pool')
@@ -85,9 +86,10 @@ function App() {
     let active = true
     api('/api/avatars/pool').then(data => {
       if (!active) return
-      const shuffled = [...data.avatars].sort(() => Math.random() - 0.5)
-      setTripAvatars(shuffled.slice(0, 10).map(a => a.url))
-    }).catch(() => active && setTripAvatars([]))
+      const shuffled = [...data.avatars].sort(() => Math.random() - 0.5).slice(0, 10)
+      setTripAvatars(shuffled.map(a => a.url))
+      setTripAvatarObjectNames(shuffled.map(a => a.object_name))
+    }).catch(() => { if (active) { setTripAvatars([]); setTripAvatarObjectNames([]) } })
     return () => { active = false }
   }, [page])
   const displayTrip = liveInput?.trip || trip
@@ -111,7 +113,10 @@ function App() {
   const dispatch = async () => {
     if (inFlight.current || loading) return
     inFlight.current = true
-    const input = { trip: { ...trip }, profile: serverProfile(profile), idempotency_key: crypto.randomUUID() }
+    const input = {
+      trip: { ...trip }, profile: serverProfile(profile), idempotency_key: crypto.randomUUID(),
+      avatar_object_names: tripAvatarObjectNames,
+    }
     const start = Date.now()
     // tripAvatars is already drawn when the Plan page loaded (see the effect above),
     // so what the traveler count selector previewed is exactly what the live map shows.

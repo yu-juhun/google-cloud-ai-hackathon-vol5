@@ -18,6 +18,22 @@ def test_inaccessible_scene_checks_exterior_instead_of_successful_visit():
     assert "She is enjoying the activity" not in prompt
 
 
+def test_avatar_reference_for_maps_ordinal_to_its_own_avatar():
+    names = ["avatars/a/0", "avatars/a/1", "avatars/a/2"]
+    assert images.avatar_reference_for(1, names) == "avatars/a/0"
+    assert images.avatar_reference_for(3, names) == "avatars/a/2"
+
+
+def test_avatar_reference_for_returns_none_when_ordinal_is_out_of_range():
+    names = ["avatars/a/0"]
+    assert images.avatar_reference_for(2, names) is None
+
+
+def test_avatar_reference_for_returns_none_when_no_avatars_supplied():
+    assert images.avatar_reference_for(1, None) is None
+    assert images.avatar_reference_for(1, []) is None
+
+
 def test_empty_parts_are_not_a_type_error():
     response = types.GenerateContentResponse(
         candidates=[types.Candidate(content=types.Content(parts=None))]

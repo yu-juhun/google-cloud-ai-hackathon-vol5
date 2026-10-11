@@ -97,9 +97,13 @@ async def create_mission(request: MissionInput, x_michibiki_client: str = Header
     try:
         async with asyncio.timeout(840):
             result = await rpc("orchestrator", request.model_dump())
+            own_avatars = await asyncio.to_thread(
+                db.avatar_object_names_owned_by, owner_id, request.avatar_object_names
+            )
             await experience_images.generate(
                 result,
                 mission["id"],
+                avatar_object_names=own_avatars,
                 budget=min(300, max(1, 835 - (time.monotonic() - started))),
             )
             result["timings"]["request_ms"] = round((time.monotonic() - started) * 1000)
