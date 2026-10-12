@@ -23,7 +23,7 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
     logger.addHandler(handler)
 logger.propagate = False
-VERSION = "experience-demo-v2"
+VERSION = "experience-personal-travel-v3"
 # Shared by requests in this process, not multiplied by each incoming mission.
 IMAGE_SLOTS = asyncio.Semaphore(2)
 
@@ -130,7 +130,7 @@ def scene_prompt(assessment, place):
         "sidewalk; do not show her entering, using the facility, or overcoming barriers. "
         "Do not turn this into a successful visit or invent accessible equipment. "
         if exterior_check
-        else "She is enjoying the activity described below at the researched destination. "
+        else "The traveler is enjoying the activity described below at the researched destination. "
     )
     personal_care = any(
         word in str(place.get("name", "")).lower()
@@ -144,9 +144,15 @@ def scene_prompt(assessment, place):
         else ""
     )
     return (
-        "Create one joyful, natural travel photograph-style illustration. Preserve the "
-        "person's face, hairstyle and any mobility device from the reference image, "
-        "but replace its background. The destination is in Japan. "
+        "Create one joyful, natural photograph-style illustration of an ordinary adult traveler. "
+        "Use the reference for the person's facial identity and hairstyle ONLY, not its artistic style, "
+        "costume, face paint, accessories, background or fictional persona. "
+        "Show a living human with natural skin and an uncovered human face, wearing ordinary everyday travel clothes. "
+        "Never add skull or skeleton imagery, skeletal faces, horror makeup, Halloween decoration, "
+        "fantasy characters or costumes inherited from an avatar template. "
+        "Preserve any mobility device; keep the traveler seated in their wheelchair when present. "
+        "Show only the researched activity. Do not invent instruments, performances, props or events "
+        "that the saved experience does not call for. The destination is in Japan. "
         + activity
         + "Warm daylight, natural expression, credible "
         "composition, no text or watermark. The destination is an illustrative "
