@@ -119,6 +119,7 @@ async def _run_mission(mission_id, owner_id, request, started):
                 result,
                 mission_id,
                 avatar_object_names=own_avatars,
+                profile=request.profile.model_dump(),
                 budget=min(300, max(1, 835 - (time.monotonic() - started))),
             )
             result["timings"]["request_ms"] = round((time.monotonic() - started) * 1000)
