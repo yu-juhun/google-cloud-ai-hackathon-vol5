@@ -31,7 +31,7 @@ export default function VideoRequest({ reportId, missionId, place, reportText, p
     setPosterUrl('')
     if (missionId && videoUrl) api(`/api/missions/${missionId}`).then(mission => {
       if (!active) return
-      const result = mission.result
+      const result = mission.result || mission
       const images = (result?.twins || []).map(t => t.experience_image).filter(image => image?.status === 'ready' && image.url)
       const firstPlace = result?.itinerary?.stops?.[0]?.place_id
       const image = images.find(image => image.place_id === firstPlace) || images[0]
