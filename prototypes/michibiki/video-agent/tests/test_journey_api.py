@@ -56,6 +56,11 @@ def test_interests_are_retained_but_not_requested_as_content_reproductions():
     assert "not a request to reproduce their protected content" in prompt
     assert "Do not portray or impersonate any celebrity" in prompt
     assert "Any background visitors must also be clearly grown adults" in prompt
+    assert "Choose one concrete, enjoyable action" in prompt
+    assert "not a fixed itinerary or a list of allowed topics" in prompt
+    assert "every voice, including background visitors, must speak Japanese ONLY" in prompt
+    assert "seconds 1.5 to 7.5" in prompt
+    assert "No speaking" not in prompt
     assert "Scene 1 of 4" in prompt
 
 
