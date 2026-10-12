@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { api, clientToken } from './api'
 import VoiceConsultation from './VoiceConsultation'
 import './video-request.css'
@@ -18,9 +18,36 @@ export default function VideoRequest({ reportId, missionId, place, reportText, p
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [progress, setProgress] = useState(null)
+  const [posterUrl, setPosterUrl] = useState('')
+  const [hasPlayed, setHasPlayed] = useState(false)
+  const videoRef = useRef(null)
   const statusPath = missionId ? `/api/journey-videos/by-mission/${missionId}` : `/api/videos/by-report/${reportId}`
 
   const useConsultation = wish => { setFeedback(wish.slice(0, 500)); setInputMethod('text') }
+
+  useEffect(() => {
+    let active = true
+    setHasPlayed(false)
+    setPosterUrl('')
+    if (missionId && videoUrl) api(`/api/missions/${missionId}`).then(mission => {
+      if (!active) return
+      const result = mission.result
+      const images = (result?.twins || []).map(t => t.experience_image).filter(image => image?.status === 'ready' && image.url)
+      const firstPlace = result?.itinerary?.stops?.[0]?.place_id
+      const image = images.find(image => image.place_id === firstPlace) || images[0]
+      if (image) {
+        const picture = new Image()
+        picture.onload = () => { if (active) setPosterUrl(image.url) }
+        picture.src = image.url
+      }
+    }).catch(() => {})
+    return () => { active = false }
+  }, [missionId, videoUrl])
+
+  const playVideo = async () => {
+    try { await videoRef.current?.play() }
+    catch { setError('再生できませんでした。動画の再生ボタンからもう一度お試しください。') }
+  }
 
   useEffect(() => {
     let active = true, timer
@@ -101,7 +128,13 @@ export default function VideoRequest({ reportId, missionId, place, reportText, p
           <ol>{progress?.scenes?.map((scene, index) => <li key={index}>{scene.name}：{scene.status === 'ready' ? '完成' : ['generating', 'submitting'].includes(scene.status) ? '映像を作成中' : 'これから'}</li>)}</ol>
           <p>画面を閉じると次の場面の開始は一時停止し、この旅を再び開くと続きから進みます。</p></>}
       </div>}
-    {videoUrl && <><video controls playsInline src={videoUrl} /><small>公開情報と生成画像から作った仮想体験です。現地訪問や通行の証拠ではありません。</small></>}
+    {videoUrl && <><div className={`journey-video-player ${!posterUrl && !hasPlayed ? 'is-poster-pending' : ''}`}>
+      <video ref={videoRef} controls playsInline preload="metadata" poster={posterUrl} src={videoUrl} onPlay={() => { setHasPlayed(true); setError('') }} />
+      {!hasPlayed && <button type="button" className="journey-video-play" onClick={playVideo} aria-label="旅の動画を再生">
+        <span className="journey-video-play-icon" aria-hidden="true">▶</span>
+        <span>旅の動画を再生<small>あなたの一日を、映像で。</small></span>
+      </button>}
+    </div><small>公開情報と生成画像から作った仮想体験です。現地訪問や通行の証拠ではありません。</small></>}
     {videoUrl && !!progress?.credits?.length && <details><summary>参考写真の出典</summary><ul>{progress.credits.map((credit, index) => <li key={index}><a href={credit.source} target="_blank" rel="noreferrer">{credit.author} / {credit.license}</a></li>)}</ul></details>}
     {error && <p className="video-warning" role="alert">{error}</p>}
   </section>
