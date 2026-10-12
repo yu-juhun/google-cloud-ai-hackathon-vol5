@@ -3,7 +3,7 @@ from uuid import uuid4
 
 import pytest
 
-from journey_api import ComposeRequest, media_object, render_movie
+from journey_api import ComposeRequest, SceneRequest, media_object, render_movie, submit_scene
 from veo_client import start_reference_task
 from journey import compose
 
@@ -36,6 +36,26 @@ def test_reuse_completed_movie_without_composing_again():
     assert result["object_name"] == f"videos/journeys/{job_id}/journey.mp4"
     assert result["render"]["duration_seconds"] == 24.3
     compose.assert_not_called()
+
+
+def test_interests_are_retained_but_not_requested_as_content_reproductions():
+    request = SceneRequest(person_object=f"videos/journeys/{uuid4()}/person-reference",
+        person_mime="image/png", reference_kind="text_imagined",
+        scene={"name": "国立新美術館", "activity": "乃木坂46のMVゆかりの場所を楽しむ",
+               "facts": ["店舗やイベントの情報"]},
+        trip={"wish": "乃木坂46の聖地巡礼", "destination": "乃木坂"}, chair="手動車いす",
+        feedback="食べ歩きも楽しみたい", index=0, count=4)
+    blob = MagicMock()
+    blob.download_as_bytes.return_value = b"person"
+    with patch("journey_api.media_object", return_value=blob), patch("journey_api.start_reference_task", return_value="op") as start:
+        assert submit_scene(request) == "op"
+    prompt = start.call_args.args[1]
+    for text in ["乃木坂46の聖地巡礼", "国立新美術館", "店舗やイベントの情報", "食べ歩きも楽しみたい"]:
+        assert text in prompt
+    assert "ONLY this uploaded adult traveler" in prompt
+    assert "not a request to reproduce their protected content" in prompt
+    assert "Do not portray or impersonate any celebrity" in prompt
+    assert "Scene 1 of 4" in prompt
 
 
 def test_every_crossfade_reestablishes_constant_frame_rate(tmp_path):
