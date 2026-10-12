@@ -55,6 +55,7 @@ def test_interests_are_retained_but_not_requested_as_content_reproductions():
     assert "ONLY this uploaded adult traveler" in prompt
     assert "not a request to reproduce their protected content" in prompt
     assert "Do not portray or impersonate any celebrity" in prompt
+    assert "Any background visitors must also be clearly grown adults" in prompt
     assert "Scene 1 of 4" in prompt
 
 

@@ -64,6 +64,8 @@ def submit_scene(request):
         "and destination context, not a request to reproduce their protected content. "
         "Do not portray or impersonate any celebrity, recreate existing film or music-video footage, "
         "or reproduce an existing song, recording or performance. Make original footage and natural ambience. "
+        "The traveler is a clearly grown adult with adult facial features and adult body proportions. "
+        "Any background visitors must also be clearly grown adults. Use a quiet moment with sparse adult visitors. "
         "Start directly at THIS scene's destination, not the portrait background or the previous place. "
         "One gentle camera movement, medium-wide eye-level, destination visible, full-frame 16:9, "
         "consistent warm natural daylight. Quiet anticipation, discovery or enjoyment of the planned activity. "
