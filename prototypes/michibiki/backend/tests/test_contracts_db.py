@@ -65,7 +65,7 @@ def test_migration_and_idempotency(database):
     with database.connect() as conn:
         assert conn.execute(select(func.count()).select_from(db.missions)).scalar() == 1
         assert (
-            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 7
+            conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 8
         )
 
 
@@ -151,7 +151,7 @@ def test_migrate_demo_owner_data_moves_profile_and_missions(database):
 
     db.migrate_demo_owner_data("real-client-hash")
 
-    assert db.get_profile(db.DEMO_OWNER) is None
+    assert db.get_profile(db.DEMO_OWNER) == {"chair": "手動車いす"}
     assert db.get_profile("real-client-hash") == {"chair": "手動車いす"}
     assert db.get_mission(db.DEMO_OWNER, mission["id"]) is None
     assert db.get_mission("real-client-hash", mission["id"]) is not None
@@ -252,7 +252,7 @@ def test_migration_5_upgrades_a_pre_existing_version_4_database(tmp_path, monkey
     db.migrate(engine)
 
     with engine.connect() as conn:
-        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 7
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 8
 
     db.add_avatar_pool_entries("client-upgrade", 1, [
         {"template_id": "female_manga_mood", "object_name": "avatars/u/female_manga_mood"},
@@ -354,7 +354,7 @@ def test_migration_6_upgrades_a_pre_existing_version_5_database(tmp_path, monkey
     db.migrate(engine)
 
     with engine.connect() as conn:
-        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 7
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 8
 
     assert db.get_profile_avatar_gender("legacy-owner-3") is None
     db.set_profile_avatar_gender("legacy-owner-3", "female")
@@ -434,7 +434,7 @@ def test_migration_7_recreates_a_table_schema_migrations_thinks_already_exists(t
     db.migrate(engine)
 
     with engine.connect() as conn:
-        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 7
+        assert conn.execute(select(func.count()).select_from(db.migrations)).scalar() == 8
         assert conn.execute(select(db.image_rate_windows)).all() == []
 
     engine.dispose()

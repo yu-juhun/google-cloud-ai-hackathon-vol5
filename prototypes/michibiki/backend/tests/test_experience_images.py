@@ -13,9 +13,36 @@ def test_inaccessible_scene_checks_exterior_instead_of_successful_visit():
         {"status": "not_accessible", "experience": "Enjoying coffee inside"},
         {"name": "Cafe"},
     )
-    assert "Keep her outside" in prompt
+    assert "Keep the traveler outside" in prompt
     assert "Do not turn this into a successful visit" in prompt
-    assert "She is enjoying the activity" not in prompt
+    assert "The traveler is enjoying the activity" not in prompt
+
+
+def test_travel_photo_does_not_inherit_avatar_costumes_or_invent_performances():
+    prompt = images.scene_prompt(
+        {"status": "accessible", "experience": "乃木坂46ゆかりの乃木坂駅に到着する", "facts": ["駅入口"]},
+        {"name": "乃木坂駅"},
+    )
+    assert "facial identity and hairstyle ONLY" in prompt
+    assert "natural skin" in prompt
+    assert "Never add skull or skeleton imagery" in prompt
+    assert "Do not invent instruments, performances" in prompt
+    assert "乃木坂46ゆかりの乃木坂駅に到着する" in prompt
+    assert "乃木坂駅" in prompt
+
+
+def test_restroom_image_uses_saved_wheelchair_profile_even_for_portrait_avatar():
+    prompt = images.scene_prompt(
+        {"status": "needs_confirmation", "experience": "公園のトイレの近くで休憩する"},
+        {"name": "乃木公園トイレ"}, {"chair": "電動車いす"},
+    )
+    assert "Required wheelchair type from the saved profile: 電動車いす" in prompt
+    assert "even if the portrait reference crops out the mobility device" in prompt
+    assert "MUST remain seated in that wheelchair" in prompt
+    assert "seat, wheels, frame and footrests must be clearly visible" in prompt
+    assert "Keep the wheelchair clearly visible during this outdoor rest" in prompt
+    assert "a bathroom interior" in prompt
+    assert "when present" not in prompt
 
 
 def test_avatar_reference_for_maps_ordinal_to_its_own_avatar():

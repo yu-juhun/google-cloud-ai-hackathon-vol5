@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import './history.css'
 
+const statusLabel = { completed: 'レポート完成', partial: '一部のレポートが完成', running: '調査中', failed: '分析を完了できませんでした' }
+
 export default function History({ onOpen, onPlan }) {
   const [missions, setMissions] = useState(null)
   const [error, setError] = useState('')
@@ -20,7 +22,7 @@ export default function History({ onOpen, onPlan }) {
         <button onClick={() => onOpen(mission.id)}>
           <span className="history-destination">{mission.destination}</span>
           <span className="history-date">{mission.date}</span>
-          <span className={`history-status history-status-${mission.status}`}>{mission.status}</span>
+          <span className={`history-status history-status-${mission.status}`}>{statusLabel[mission.status] || '確認中'}</span>
         </button>
       </li>)}
     </ul>}

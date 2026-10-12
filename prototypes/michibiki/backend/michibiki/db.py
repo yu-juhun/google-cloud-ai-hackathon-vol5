@@ -16,6 +16,7 @@ from sqlalchemy import (
     create_engine,
     delete,
     insert,
+    inspect,
     select,
     update,
 )
@@ -128,6 +129,17 @@ video_jobs = Table(
     Column("object_name", String),
     Column("created_at", DateTime(timezone=True), nullable=False),
 )
+journey_video_jobs = Table(
+    "journey_video_jobs", metadata,
+    Column("id", String(36), primary_key=True),
+    Column("client_hash", String(64), nullable=False),
+    Column("mission_id", String(36), ForeignKey("missions.id"), nullable=False),
+    Column("status", String, nullable=False),
+    Column("body", json_type, nullable=False),
+    Column("object_name", String),
+    Column("progress_until", DateTime(timezone=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+)
 
 
 def now():
@@ -156,6 +168,45 @@ def engine():
     )
 
 
+def _ensure_avatar_pool_schema(conn):
+    """Repair both historical meanings of migration 5 without deleting assets."""
+    from sqlalchemy import text
+
+    avatar_pool.create(conn, checkfirst=True)
+    columns = {c["name"] for c in inspect(conn).get_columns("profiles")}
+    if "avatar_object_name" not in columns:
+        conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_object_name VARCHAR"))
+    archived = False
+    if inspect(conn).has_table("avatar_sets"):
+        columns = {c["name"] for c in inspect(conn).get_columns("avatar_sets")}
+        if "provider_task_ids" not in columns:
+            if inspect(conn).has_table("avatar_sets_legacy"):
+                raise RuntimeError("Legacy avatar archive already exists; manual reconciliation required")
+            # Keep generated image pointers and completed old jobs recoverable.
+            conn.execute(text("ALTER TABLE avatar_sets RENAME TO avatar_sets_legacy"))
+            archived = True
+    avatar_sets.create(conn, checkfirst=True)
+    if archived:
+        legacy = Table("avatar_sets_legacy", MetaData(), autoload_with=conn)
+        rows = conn.execute(select(legacy).where(legacy.c.status == "ready")
+                            .order_by(legacy.c.created_at.desc())).mappings().all()
+        imported = set()
+        for row in rows:
+            owner = row["client_hash"]
+            if owner in imported:
+                continue
+            assets = row["assets"].get("assets", []) if isinstance(row["assets"], dict) else []
+            assets = [a for a in assets if isinstance(a, dict) and a.get("object_name")]
+            if not assets:
+                continue
+            imported.add(owner)
+            for index, asset in enumerate(assets):
+                conn.execute(insert(avatar_pool).values(id=str(uuid4()), client_hash=owner,
+                    template_id=f"legacy-{index}", object_name=asset["object_name"], version=1, created_at=now()))
+            conn.execute(update(profiles).where(profiles.c.owner_id == owner,
+                profiles.c.avatar_object_name.is_(None)).values(avatar_object_name=assets[0]["object_name"]))
+
+
 def migrate(db=None):
     db = db or engine()
     with db.begin() as conn:
@@ -181,22 +232,16 @@ def migrate(db=None):
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 4)).first():
                 video_jobs.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=4))
+            # An earlier PR #20 used version 5 for journey_video_jobs. Checking
+            # the actual columns also repairs those already-deployed databases.
+            _ensure_avatar_pool_schema(conn)
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 5)).first():
-                from sqlalchemy import text
-
-                avatar_pool.create(conn, checkfirst=True)
-                conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_object_name VARCHAR"))
-                # avatar_sets changed shape (provider_task_id -> provider_task_ids JSON,
-                # assets dropped, version added NOT NULL). Old rows' `assets` data is in
-                # the old incompatible shape and unreadable by the new code anyway, so
-                # drop and recreate rather than trying to ALTER in place.
-                avatar_sets.drop(conn, checkfirst=True)
-                avatar_sets.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=5))
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 6)).first():
                 from sqlalchemy import text
 
-                conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_gender VARCHAR"))
+                if "avatar_gender" not in {c["name"] for c in inspect(conn).get_columns("profiles")}:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN avatar_gender VARCHAR"))
                 conn.execute(insert(migrations).values(version=6))
             if not conn.execute(select(migrations.c.version).where(migrations.c.version == 7)).first():
                 # Self-healing: on the real deployed Cloud SQL instance, image_rate_windows
@@ -211,6 +256,9 @@ def migrate(db=None):
                 video_jobs.create(conn, checkfirst=True)
                 avatar_pool.create(conn, checkfirst=True)
                 conn.execute(insert(migrations).values(version=7))
+            journey_video_jobs.create(conn, checkfirst=True)
+            if not conn.execute(select(migrations.c.version).where(migrations.c.version == 8)).first():
+                conn.execute(insert(migrations).values(version=8))
             return
         metadata.create_all(conn)
         conn.execute(insert(migrations).values(version=1))
@@ -220,6 +268,65 @@ def migrate(db=None):
         conn.execute(insert(migrations).values(version=5))
         conn.execute(insert(migrations).values(version=6))
         conn.execute(insert(migrations).values(version=7))
+        conn.execute(insert(migrations).values(version=8))
+
+
+def find_journey_video(owner, mission_id):
+    with engine().connect() as conn:
+        row = conn.execute(select(journey_video_jobs).where(
+            journey_video_jobs.c.client_hash == owner,
+            journey_video_jobs.c.mission_id == mission_id,
+        ).order_by(journey_video_jobs.c.created_at.desc()).limit(1)).mappings().first()
+    return dict(row) if row else None
+
+
+def begin_journey_video(owner, mission_id, body):
+    """One active/completed movie per trip; serialize concurrent button presses."""
+    with engine().begin() as conn:
+        if conn.dialect.name == "postgresql":
+            from sqlalchemy import text
+            conn.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+                         {"key": f"journey:{owner}:{mission_id}"})
+        latest = conn.execute(select(journey_video_jobs).where(
+            journey_video_jobs.c.client_hash == owner,
+            journey_video_jobs.c.mission_id == mission_id,
+        ).order_by(journey_video_jobs.c.created_at.desc()).limit(1)).mappings().first()
+        if latest and latest["status"] != "failed":
+            return dict(latest), False
+        record = dict(id=str(uuid4()), client_hash=owner, mission_id=mission_id,
+                      status="queued", body=body, created_at=now())
+        conn.execute(insert(journey_video_jobs).values(**record))
+        return record, True
+
+
+def claim_journey_progress(job_id):
+    with engine().begin() as conn:
+        changed = conn.execute(update(journey_video_jobs).where(
+            journey_video_jobs.c.id == job_id,
+            (journey_video_jobs.c.progress_until.is_(None)) |
+            (journey_video_jobs.c.progress_until < now()),
+        ).values(progress_until=now() + timedelta(seconds=300)))
+        return changed.rowcount == 1
+
+
+def get_journey_video(job_id, owner):
+    with engine().connect() as conn:
+        row = conn.execute(select(journey_video_jobs).where(
+            journey_video_jobs.c.id == job_id, journey_video_jobs.c.client_hash == owner,
+        )).mappings().first()
+    return dict(row) if row else None
+
+
+def save_journey_video(job_id, status, body, object_name=None):
+    with engine().begin() as conn:
+        conn.execute(update(journey_video_jobs).where(journey_video_jobs.c.id == job_id)
+                     .values(status=status, body=body, object_name=object_name))
+
+
+def release_journey_progress(job_id):
+    with engine().begin() as conn:
+        conn.execute(update(journey_video_jobs).where(journey_video_jobs.c.id == job_id)
+                     .values(progress_until=None))
 
 
 def reserve_image_request(models):
@@ -492,6 +599,12 @@ def get_avatar_set(set_id, client_hash):
             .mappings()
             .first()
         )
+        if not record and inspect(conn).has_table("avatar_sets_legacy"):
+            legacy = Table("avatar_sets_legacy", MetaData(), autoload_with=conn)
+            old = conn.execute(select(legacy).where(legacy.c.id == set_id,
+                legacy.c.client_hash == client_hash, legacy.c.status == "ready")).mappings().first()
+            if old:
+                return {**dict(old), "version": 1}
     return dict(record) if record else None
 
 
@@ -634,19 +747,38 @@ def update_video_job(job_id, status, provider_operation_name=None, object_name=N
         conn.execute(update(video_jobs).where(video_jobs.c.id == job_id).values(**values))
 
 
-def get_report(report_id):
+def get_report(report_id, owner_id=None):
     with engine().connect() as conn:
-        record = conn.execute(select(reports).where(reports.c.id == report_id)).mappings().first()
+        query = select(reports).where(reports.c.id == report_id)
+        if owner_id is not None:
+            query = query.join(twins, reports.c.twin_id == twins.c.id).join(
+                missions, twins.c.mission_id == missions.c.id
+            ).where(missions.c.owner_id == owner_id)
+        record = conn.execute(query).mappings().first()
     return dict(record) if record else None
 
 
 def find_latest_ready_avatar_set(client_hash):
+    # Do not hold a DB connection while the pool/profile helpers acquire theirs.
+    pool = get_avatar_pool(client_hash)
+    selected = get_profile_avatar(client_hash)
     with engine().connect() as conn:
         record = conn.execute(select(avatar_sets).where(
             avatar_sets.c.client_hash == client_hash,
             avatar_sets.c.status == "ready",
         ).order_by(avatar_sets.c.created_at.desc()).limit(1)).mappings().first()
-    return dict(record) if record else None
+        result = dict(record) if record else None
+        if pool:
+            asset = next((p for p in pool if p["object_name"] == selected), pool[0])
+            return {**(result or {}), "client_hash": client_hash,
+                    "assets": {"assets": [{"object_name": asset["object_name"]}]}}
+        if inspect(conn).has_table("avatar_sets_legacy"):
+            legacy = Table("avatar_sets_legacy", MetaData(), autoload_with=conn)
+            old = conn.execute(select(legacy).where(legacy.c.client_hash == client_hash,
+                legacy.c.status == "ready").order_by(legacy.c.created_at.desc()).limit(1)).mappings().first()
+            if old:
+                return dict(old)
+    return result
 
 
 def find_active_video_job(client_hash, report_id):
@@ -694,6 +826,25 @@ def save_consultation(client_hash, body):
     return record_id
 
 
+def get_report_scene_context(report_id):
+    with engine().connect() as conn:
+        row = conn.execute(
+            select(missions.c.input_snapshot, missions.c.result, reports.c.body)
+            .select_from(reports.join(twins, reports.c.twin_id == twins.c.id)
+                         .join(missions, twins.c.mission_id == missions.c.id))
+            .where(reports.c.id == report_id)
+        ).mappings().first()
+    if not row:
+        return {}
+    trip = row["input_snapshot"].get("trip", {})
+    assessment = (row["body"].get("assessments") or [{}])[0]
+    itinerary = (row["result"] or {}).get("itinerary", {})
+    stop = next((s for s in itinerary.get("stops", [])
+                 if s.get("place_id") == assessment.get("place_id")), {})
+    return {"destination": trip.get("destination", ""), "wish": trip.get("wish", ""),
+            "activity": stop.get("activity", ""), "trip_title": itinerary.get("title", "")}
+
+
 def migrate_demo_owner_data(target_client_hash):
     """One-time, manually-invoked data migration — never called from migrate() or
     any endpoint. Moves DEMO_OWNER's profile and missions to a real client_hash.
@@ -724,4 +875,4 @@ def migrate_demo_owner_data(target_client_hash):
             .where(missions.c.owner_id == DEMO_OWNER)
             .values(owner_id=target_client_hash)
         )
-        conn.execute(delete(profiles).where(profiles.c.owner_id == DEMO_OWNER))
+        # Keep the legacy profile as a recoverable record; never delete user data.

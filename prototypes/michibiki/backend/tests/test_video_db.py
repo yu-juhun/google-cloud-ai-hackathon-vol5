@@ -101,6 +101,8 @@ def test_get_mission_profile_returns_profile_for_linked_report(database):
         conn.execute(insert(db.reports).values(id=report_id, twin_id=twin_id, version=1, body={}))
 
     assert db.get_mission_profile(report_id) == profile
+    assert db.get_report(report_id, db.DEMO_OWNER)["id"] == report_id
+    assert db.get_report(report_id, "another-browser") is None
 
 
 def test_video_jobs_table_survives_a_fresh_migration(tmp_path, monkeypatch):

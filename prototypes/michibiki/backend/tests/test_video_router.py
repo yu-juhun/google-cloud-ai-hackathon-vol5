@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, patch
+import pytest
 
 from fastapi.testclient import TestClient
 
@@ -6,6 +7,12 @@ from michibiki.server import app
 
 client = TestClient(app)
 HEADERS = {"X-Michibiki-Client": "a" * 40}
+
+
+@pytest.fixture(autouse=True)
+def scene_context():
+    with patch("michibiki.db.get_report_scene_context", return_value={}):
+        yield
 
 
 def _report_row():
@@ -376,7 +383,7 @@ def test_progress_ws_marks_job_failed_when_polling_raises(mock_get_job, mock_upd
 
     mock_get_job.return_value = {"id": "job-1", "client_hash": "x", "status": "generating",
                                  "provider_operation_name": "operations/abc123"}
-    mock_rpc.side_effect = HTTPException(502, "動画生成APIに接続できませんでした。")
+    mock_rpc.side_effect = HTTPException(403, "動画生成APIに接続できませんでした。")
 
     with patch("michibiki.video.client_hash", return_value="x"):
         with client.websocket_connect(

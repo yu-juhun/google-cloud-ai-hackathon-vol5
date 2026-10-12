@@ -1,0 +1,26 @@
+[
+  {
+    "place_id": "ChIJdzWDgX6LGGAR_Fg_79e-e44",
+    "name": "乃木坂に到着",
+    "commons_file": "File:Nogizaka Station October 26 2019.jpeg",
+    "visual_action": "Arrival: she pauses safely away from the railway or entrance edge, looks around with a small excited smile, then looks toward the next destination. Do not depict entering an elevator or crossing stairs."
+  },
+  {
+    "place_id": "ChIJP-vO9nuLGGARGJ2q8uryJUA",
+    "name": "国立新美術館を楽しむ",
+    "commons_file": "File:Nac tokyo.jpg",
+    "visual_action": "Discovery: she admires the National Art Center's distinctive curving glass facade from a visible public forecourt, gently turns her gaze along the architectural curves, and enjoys the scene. Do not fabricate paintings, exhibitions or celebrity photographs."
+  },
+  {
+    "place_id": "ChIJwR2lZ36LGGAR43Z0b6e3Gw4",
+    "name": "乃木神社を巡る",
+    "commons_file": "File:Nogi shrine in Minato Tokyo - September 19 2021 various 01 18 00 716000.jpeg",
+    "visual_action": "Reflection: she remains seated on a visible level part outside Nogi Shrine's inner sanctuary, looks at the shrine, quietly brings her hands together for a moment, then relaxes them. Do not traverse stairs or invent a ramp. No drink or cup in this scene."
+  },
+  {
+    "place_id": "ChIJU2MukniLGGAR1qSN4ds5Pus",
+    "name": "ミッドタウンでひと休み",
+    "commons_file": "File:Garden @ Tokyo Midtown @ Roppongi (14086818007).jpg",
+    "visual_action": "Rest and closing: at Tokyo Midtown's garden, she rests in her own wheelchair near the greenery, takes a relaxed breath, enjoys the afternoon light and ends with a contented smile. A quiet rest, no invented cafe, eating or drink."
+  }
+]
