@@ -107,6 +107,14 @@ async def _run_mission(mission_id, owner_id, request, started):
             own_avatars = await asyncio.to_thread(
                 db.avatar_object_names_owned_by, owner_id, request.avatar_object_names
             )
+            # Map icons may vary, but experience photos and the journey movie
+            # should depict the same profile-selected person, not random costumes.
+            selected_avatar = await asyncio.to_thread(db.get_profile_avatar, owner_id)
+            selected_owned = await asyncio.to_thread(
+                db.avatar_object_names_owned_by, owner_id, [selected_avatar] if selected_avatar else []
+            )
+            if selected_owned:
+                own_avatars = selected_owned * max((t.get("ordinal", 0) for t in result.get("twins", [])), default=0)
             await experience_images.generate(
                 result,
                 mission_id,
