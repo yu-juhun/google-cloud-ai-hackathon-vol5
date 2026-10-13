@@ -85,9 +85,9 @@ export function App({
   return (
     <div className="app-shell">
       <header className="site-header">
-        <a className="brand" href="#top" aria-label="いける店 ホーム">
-          <span className="brand-mark" aria-hidden="true">い</span>
-          <h1>いける店</h1>
+        <a className="brand" href="#top" aria-label="wishlan ホーム">
+          <span className="brand-mark" aria-hidden="true">w</span>
+          <h1>wishlan</h1>
         </a>
       </header>
 

@@ -1,4 +1,4 @@
-# フロントエンド
+# wishlan フロントエンド
 
 車いす利用者向け飲食店推薦のWeb UIです。API契約の正本は
 [`../api/openapi.yaml`](../api/openapi.yaml)です。
