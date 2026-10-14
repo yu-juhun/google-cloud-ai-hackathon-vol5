@@ -1,0 +1,136 @@
+<mxfile host="app.diagrams.net" agent="claude-code" version="24.0.0">
+  <diagram id="michibiki-arch" name="michibiki architecture">
+    <mxGraphModel dx="1600" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1700" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- CI/CD group -->
+        <mxCell id="cicd" value="CI/CD（ビルド &amp; デプロイ）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f3f4;strokeColor=#5f6368;verticalAlign=top;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="40" width="320" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="build" value="Cloud Build&#10;SA: michibiki-builder / michibiki-frontend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5f6368;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="75" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="registry" value="Artifact Registry&#10;michibiki (Docker)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#5f6368;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="150" width="280" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="e_build_registry" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;" edge="1" parent="1" source="build" target="registry">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- User -->
+        <mxCell id="user" value="ユーザー（ブラウザ）" style="ellipse;whiteSpace=wrap;html=1;fillColor=#f1f3f4;strokeColor=#80868b;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="420" y="80" width="200" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Project boundary -->
+        <mxCell id="project" value="Google Cloud プロジェクト（asia-northeast1）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#dadce0;verticalAlign=top;fontSize=15;align=center;" vertex="1" parent="1">
+          <mxGeometry x="20" y="260" width="1640" height="760" as="geometry" />
+        </mxCell>
+
+        <!-- Public Cloud Run -->
+        <mxCell id="pub" value="Cloud Run — 公開（ingress: all / invoker: allUsers）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f0fe;strokeColor=#1a73e8;verticalAlign=top;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="300" width="600" height="150" as="geometry" />
+        </mxCell>
+        <mxCell id="frontend" value="frontend (React / Vite, Nginx)&#10;SA: michibiki-frontend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1a73e8;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="90" y="345" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="backend" value="backend-api (FastAPI)&#10;SA: michibiki-backend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#1a73e8;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="400" y="345" width="240" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e_fe_be" value="REST / ポーリング" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="frontend" target="backend">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Private Cloud Run -->
+        <mxCell id="priv" value="Cloud Run — 非公開（invoker: 呼び出し元サービスアカウントのみ）" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e6f4ea;strokeColor=#188038;verticalAlign=top;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="700" y="300" width="900" height="320" as="geometry" />
+        </mxCell>
+        <mxCell id="orchestrator" value="trip-orchestrator&#10;SA: michibiki-orchestrator" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#188038;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="730" y="345" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="persona" value="persona-agent-backend&#10;SA: michibiki-persona" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#188038;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="990" y="345" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="video" value="video-agent&#10;SA: michibiki-video" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#188038;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="345" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="search" value="search-agent&#10;SA: michibiki-search" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#188038;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="730" y="460" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="judge" value="judge-agent&#10;SA: michibiki-judge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#188038;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="990" y="460" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="recommend" value="recommend-agent&#10;SA: michibiki-recommend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#188038;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1250" y="460" width="230" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="e_orch_search" value="run.invoker" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="orchestrator" target="search"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_orch_judge" value="run.invoker" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="orchestrator" target="judge"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_orch_recommend" value="run.invoker" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="orchestrator" target="recommend"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e_be_orch" value="run.invoker&#10;依頼を委譲" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#188038;" edge="1" parent="1" source="backend" target="orchestrator"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_be_persona" value="run.invoker&#10;音声・アバター" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#188038;" edge="1" parent="1" source="backend" target="persona"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_be_video" value="run.invoker&#10;動画生成依頼" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;strokeColor=#188038;" edge="1" parent="1" source="backend" target="video"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- Data layer -->
+        <mxCell id="data" value="データ層" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef7e0;strokeColor=#e37400;verticalAlign=top;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="680" width="1540" height="160" as="geometry" />
+        </mxCell>
+        <mxCell id="sql" value="Cloud SQL&#10;michibiki-db&#10;(PostgreSQL 16 / db-f1-micro)" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e37400;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="90" y="715" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="bucket_avatars" value="Cloud Storage&#10;…-michibiki-avatars" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e37400;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="340" y="715" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="bucket_exp" value="Cloud Storage&#10;…-michibiki-experiences" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e37400;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="590" y="715" width="220" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="secrets" value="Secret Manager&#10;db-password / places-api-key&#10;youcam-key / youcam-secret" style="shape=note;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#e37400;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="840" y="715" width="280" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="observability" value="Cloud Logging / Monitoring / Trace&#10;（全サービス共通）" style="shape=cube;whiteSpace=wrap;html=1;fillColor=#f1f3f4;strokeColor=#5f6368;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1150" y="730" width="300" height="60" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_be_sql" value="Cloud SQL Connector" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="backend" target="sql"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_be_secrets" value="DBパスワード" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;fontSize=10;" edge="1" parent="1" source="backend" target="secrets"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_search_secrets" value="Places APIキー" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;fontSize=10;" edge="1" parent="1" source="search" target="secrets"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_persona_secrets" value="YouCamキー" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;fontSize=10;" edge="1" parent="1" source="persona" target="secrets"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_be_bucketexp" value="objectUser" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="backend" target="bucket_exp"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_be_bucketav" value="objectCreator/Viewer" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="backend" target="bucket_avatars"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_persona_bucketav" value="objectUser" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="persona" target="bucket_avatars"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_video_bucketav" value="objectCreator/Viewer&#10;(videos/journeys/* 限定)" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="video" target="bucket_avatars"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- External APIs -->
+        <mxCell id="external" value="Google Cloud / 外部 API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f3e8fd;strokeColor=#8430ce;verticalAlign=top;fontSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1300" y="260" width="360" height="620" as="geometry" />
+        </mxCell>
+        <mxCell id="vertex" value="Vertex AI&#10;Gemini 2.5 / 3.8-flash&#10;Gemini Live ／ Veo" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8430ce;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="330" width="300" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="places" value="Google Places API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8430ce;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="440" width="300" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="youcam" value="YouCam AI Avatar API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8430ce;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="520" width="300" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e_orch_vertex" value="旅の計画(Plan)&#10;Gemini 3.8-flash" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="orchestrator" target="vertex"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_judge_vertex" value="バリアフリー判定&#10;Gemini 2.5-flash" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="judge" target="vertex"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_recommend_vertex" value="旅程生成&#10;Gemini 2.5-flash" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="recommend" target="vertex"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_be_vertex" value="体験写真生成&#10;Gemini 3.1/2.5-flash-image" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="backend" target="vertex"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_persona_vertex" value="音声対話 Gemini Live (native-audio)&#10;→ペルソナ抽出 Gemini 2.5-flash" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="persona" target="vertex"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_persona_vertex2" value="アバター進化 (Gemini 2.5-flash-image)" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;fontSize=10;" edge="1" parent="1" source="persona" target="vertex"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_video_vertex" value="動画生成 Veo 3.1" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="video" target="vertex"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_search_places" value="APIキー" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="search" target="places"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_persona_youcam" value="ベースアバター生成" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="persona" target="youcam"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- top-level edges -->
+        <mxCell id="e_user_frontend" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;" edge="1" parent="1" source="user" target="frontend"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e_registry_frontend" value="デプロイ（全8サービス共通）" style="edgeStyle=orthogonalEdgeStyle;dashed=1;html=1;fontSize=10;strokeColor=#5f6368;" edge="1" parent="1" source="registry" target="frontend"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
