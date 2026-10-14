@@ -102,6 +102,10 @@ AIには、もっともらしい誤り(ハルシネーション)があります�
 
 ![michibikiのアーキテクチャ図](./architecture-diagram.png)
 
+### エージェント・ワークフロー図(各AIエージェントが呼び出すモデルと処理順序)
+
+![michibikiのエージェント・ワークフロー図](./agent-workflow-diagram.png)
+
 ## デプロイURL
 
 <https://michibiki-frontend-867704446556.asia-northeast1.run.app>
