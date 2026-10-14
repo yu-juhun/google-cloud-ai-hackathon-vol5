@@ -102,6 +102,8 @@ AIには、もっともらしい誤り(ハルシネーション)があります�
 
 ![michibikiのアーキテクチャ図](./architecture-diagram.png)
 
+(ダークスタイル版: `./architecture-diagram-dark.png` — スライドや発表資料用。提出フォームにはどちらか用途に合う方を使用)
+
 ### エージェント・ワークフロー図(各AIエージェントが呼び出すモデルと処理順序)
 
 ![michibikiのエージェント・ワークフロー図](./agent-workflow-diagram.png)
